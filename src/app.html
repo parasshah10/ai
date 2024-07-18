@@ -7,8 +7,9 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 		<meta name="apple-mobile-web-app-capable" content="yes">
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-		<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+		<!-- <meta name="theme-color" content="#171717" media="(prefers-color-scheme: dark)">
+		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)"> -->
+		<meta name="theme-color" content="">
 		<meta name="robots" content="noindex,nofollow" />
 		<link
 			rel="search"
@@ -50,7 +51,26 @@
 				} else {
 					document.documentElement.classList.add('dark');
 				}
+				function setThemeColor() {
+					const theme = localStorage.theme;
+					let color;
 
+					if (theme && theme.includes('oled')) {
+						color = '#000000';
+					} else if (theme === 'light') {
+						color = '#ffffff';
+					} else if (theme === 'her') {
+						color = '#983724';
+					} else if (theme === 'system') {
+						color = window.matchMedia('(prefers-color-scheme: dark)').matches ? '#171717' : '#ffffff';
+					} else {
+						color = '#171717'; // Default to dark theme
+					}
+
+					document.querySelector('meta[name="theme-color"]').setAttribute('content', color);
+				}
+
+				setThemeColor();
 				window.matchMedia('(prefers-color-scheme: dark)').addListener((e) => {
 					if (localStorage.theme === 'system') {
 						if (e.matches) {
@@ -60,6 +80,7 @@
 							document.documentElement.classList.add('light');
 							document.documentElement.classList.remove('dark');
 						}
+						setThemeColor();
 					}
 				});
 			})();
