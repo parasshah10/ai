@@ -1402,7 +1402,10 @@
 		];
 		messages = messages;
 
-		const prompt = userMessage.content;
+		// const prompt = userMessage.content;
+		const prompt = messages
+		.map(m => `${m.role}: ${m.content}`)
+		.join('\n\n');
 		let searchQuery = await generateSearchQuery(localStorage.token, model, messages, prompt).catch(
 			(error) => {
 				console.log(error);
