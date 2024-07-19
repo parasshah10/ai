@@ -897,7 +897,11 @@
 											</Tooltip>
 										{/if}
 
-										
+										{#if !readOnly}
+											
+
+											{#if isLastMessage}
+									
 
 												<Tooltip content={$i18n.t('Regenerate')} placement="bottom">
 													<button
