@@ -897,7 +897,7 @@
 											</Tooltip>
 										{/if}
 
-										{#if !readOnly}
+										<!-- {#if !readOnly}
 											<Tooltip content={$i18n.t('Good Response')} placement="bottom">
 												<button
 													class="{isLastMessage
@@ -998,7 +998,7 @@
 															/>
 														</svg>
 													</button>
-												</Tooltip>
+												</Tooltip> -->
 
 												<Tooltip content={$i18n.t('Regenerate')} placement="bottom">
 													<button
