@@ -1362,10 +1362,13 @@
 
 	const generateChatTitle = async (userPrompt) => {
 		if ($settings?.title?.auto ?? true) {
+			const formattedMessages = messages
+			.map(m => `${m.role}: ${m.content}`)
+			.join('\n\n');
 			const title = await generateTitle(
 				localStorage.token,
 				selectedModels[0],
-				userPrompt,
+				formattedMessages,
 				$chatId
 			).catch((error) => {
 				console.error(error);
