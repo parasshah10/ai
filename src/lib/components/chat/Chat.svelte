@@ -1254,11 +1254,8 @@
 			scrollToBottom();
 		}
 
-		if (messages.length == 2 && selectedModels[0] === model.id) {
+		if (messages.length >= 2 && selectedModels[0] === model.id) {
 			window.history.replaceState(history.state, '', `/c/${_chatId}`);
-			console.log("Here are the messages for the chat: ")
-			console.log(messages)
-			console.log("Generating title....")
 			const _title = await generateChatTitle(userPrompt);
 			await setChatTitle(_chatId, _title);
 		}
