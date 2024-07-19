@@ -96,6 +96,28 @@
 		element.scrollTop = element.scrollHeight;
 	};
 
+	const uploadToImgBB = async (file) => {
+		const formData = new FormData();
+		formData.append('image', file);
+
+		try {
+			const response = await fetch('https://api.imgbb.com/1/upload?key=c3486a864d8a14105edd406d554acb18', {
+				method: 'POST',
+				body: formData
+			});
+
+			const data = await response.json();
+			if (data.success) {
+				return data.data.url;
+			} else {
+				throw new Error(data.error.message);
+			}
+		} catch (error) {
+			toast.error(`ImgBB upload failed: ${error.message}`);
+			return null;
+		}
+	};
+	
 	const uploadFileHandler = async (file) => {
 		console.log(file);
 		// Check if the file is an audio file and transcribe/convert it to text file
@@ -253,24 +275,23 @@
 				const inputFiles = Array.from(e.dataTransfer?.files);
 
 				if (inputFiles && inputFiles.length > 0) {
-					inputFiles.forEach((file) => {
+					inputFiles.forEach(async (file) => {
 						console.log(file, file.name.split('.').at(-1));
 						if (['image/gif', 'image/webp', 'image/jpeg', 'image/png'].includes(file['type'])) {
 							if (visionCapableModels.length === 0) {
 								toast.error($i18n.t('Selected model(s) do not support image inputs'));
 								return;
 							}
-							let reader = new FileReader();
-							reader.onload = (event) => {
+							const url = await uploadToImgBB(file); // Upload to ImgBB
+							if (url) {
 								files = [
 									...files,
 									{
 										type: 'image',
-										url: `${event.target.result}`
+										url: url // Use the ImgBB URL
 									}
 								];
-							};
-							reader.readAsDataURL(file);
+							}
 						} else {
 							uploadFileHandler(file);
 						}
@@ -420,23 +441,22 @@
 					on:change={async () => {
 						if (inputFiles && inputFiles.length > 0) {
 							const _inputFiles = Array.from(inputFiles);
-							_inputFiles.forEach((file) => {
+							_inputFiles.forEach(async (file) => {
 								if (['image/gif', 'image/webp', 'image/jpeg', 'image/png'].includes(file['type'])) {
 									if (visionCapableModels.length === 0) {
 										toast.error($i18n.t('Selected model(s) do not support image inputs'));
 										return;
 									}
-									let reader = new FileReader();
-									reader.onload = (event) => {
+									const url = await uploadToImgBB(file); // Upload to ImgBB
+									if (url) {
 										files = [
 											...files,
 											{
 												type: 'image',
-												url: `${event.target.result}`
+												url: url // Use the ImgBB URL
 											}
 										];
-									};
-									reader.readAsDataURL(file);
+									}
 								} else {
 									uploadFileHandler(file);
 								}
@@ -741,26 +761,23 @@
 										e.target.style.height = '';
 										e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
 									}}
-									on:paste={(e) => {
+									on:paste={async (e) => {
 										const clipboardData = e.clipboardData || window.clipboardData;
 
 										if (clipboardData && clipboardData.items) {
 											for (const item of clipboardData.items) {
 												if (item.type.indexOf('image') !== -1) {
 													const blob = item.getAsFile();
-													const reader = new FileReader();
-
-													reader.onload = function (e) {
+													const url = await uploadToImgBB(blob); // Upload to ImgBB
+													if (url) {
 														files = [
 															...files,
 															{
 																type: 'image',
-																url: `${e.target.result}`
+																url: url // Use the ImgBB URL
 															}
 														];
-													};
-
-													reader.readAsDataURL(blob);
+													}
 												}
 											}
 										}
