@@ -86,10 +86,16 @@
 
 	let selectedModels = [''];
 	let atSelectedModel: Model | undefined;
-
+	let currentSelectedModels = JSON.parse(localStorage.getItem('currentSelectedModels')) || [''];
 	let selectedModelIds = [];
 	$: selectedModelIds = atSelectedModel !== undefined ? [atSelectedModel.id] : selectedModels;
 
+$: if (selectedModels) {
+    if (selectedModels.every(model => model.trim() !== '')) {
+        currentSelectedModels = selectedModels;
+        localStorage.setItem('currentSelectedModels', JSON.stringify(currentSelectedModels));
+    }
+}
 	let selectedToolIds = [];
 	let webSearchEnabled = false;
 
@@ -267,9 +273,12 @@
 
 		chatFiles = [];
 		params = {};
-		console.log('Here are the selected models: ')
-		console.log(selectedModels)
-		if ($page.url.searchParams.get('models')) {
+    	const validModels = currentSelectedModels.filter(modelId => 
+        $models.some(m => m.id === modelId)
+    	);
+		if (validModels.length > 0) {
+			selectedModels = validModels;
+		} else if ($page.url.searchParams.get('models')) {
 			selectedModels = $page.url.searchParams.get('models')?.split(',');
 		} else if ($settings?.models) {
 			selectedModels = $settings?.models;
@@ -323,8 +332,6 @@
 					(chatContent?.models ?? undefined) !== undefined
 						? chatContent.models
 						: [chatContent.models ?? ''];
-				console.log('Loading Chat...Here are the selected models: ')
-				console.log(selectedModels)
 				history =
 					(chatContent?.history ?? undefined) !== undefined
 						? chatContent.history
