@@ -268,7 +268,12 @@
 		chatFiles = [];
 		params = {};
 
-		if ($page.url.searchParams.get('models')) {
+		if (chat?.chat?.models) {
+			// If it's an array, take the first model, otherwise use the string
+			selectedModels = Array.isArray(chat.chat.models) 
+				? [chat.chat.models[0]] 
+				: [chat.chat.models];
+		} else if ($page.url.searchParams.get('models')) {
 			selectedModels = $page.url.searchParams.get('models')?.split(',');
 		} else if ($settings?.models) {
 			selectedModels = $settings?.models;
