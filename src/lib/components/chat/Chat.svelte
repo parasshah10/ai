@@ -267,7 +267,8 @@
 
 		chatFiles = [];
 		params = {};
-		
+		console.log('Here are the selected models: ')
+		console.log(selectedModels)
 		if ($page.url.searchParams.get('models')) {
 			selectedModels = $page.url.searchParams.get('models')?.split(',');
 		} else if ($settings?.models) {
