@@ -89,7 +89,12 @@
 
 	let selectedModelIds = [];
 	$: selectedModelIds = atSelectedModel !== undefined ? [atSelectedModel.id] : selectedModels;
-
+	let lastSelectedModel = '';
+	$: {
+		if (selectedModels.length > 0 && selectedModels[0] !== '') {
+			lastSelectedModel = selectedModels[0];
+		}
+	}
 	let selectedToolIds = [];
 	let webSearchEnabled = false;
 
@@ -268,11 +273,8 @@
 		chatFiles = [];
 		params = {};
 
-		if (chat?.chat?.models) {
-			// If it's an array, take the first model, otherwise use the string
-			selectedModels = Array.isArray(chat.chat.models) 
-				? [chat.chat.models[0]] 
-				: [chat.chat.models];
+		if (lastSelectedModel && $models.some(m => m.id === lastSelectedModel)) {
+				selectedModels = [lastSelectedModel];
 		} else if ($page.url.searchParams.get('models')) {
 			selectedModels = $page.url.searchParams.get('models')?.split(',');
 		} else if ($settings?.models) {
@@ -327,6 +329,7 @@
 					(chatContent?.models ?? undefined) !== undefined
 						? chatContent.models
 						: [chatContent.models ?? ''];
+				lastSelectedModel = Array.isArray(selectedModels) ? selectedModels[0] : selectedModels;
 				history =
 					(chatContent?.history ?? undefined) !== undefined
 						? chatContent.history
