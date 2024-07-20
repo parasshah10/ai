@@ -323,6 +323,8 @@
 					(chatContent?.models ?? undefined) !== undefined
 						? chatContent.models
 						: [chatContent.models ?? ''];
+				console.log('Loading Chat...Here are the selected models: ')
+				console.log(selectedModels)
 				history =
 					(chatContent?.history ?? undefined) !== undefined
 						? chatContent.history
