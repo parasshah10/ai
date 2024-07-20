@@ -138,9 +138,9 @@ $: if (selectedModels) {
 				loaded = true;
 
 				window.setTimeout(() => scrollToBottom(), 0);
-				if (!/Android/i.test(navigator.userAgent)) {  // Only focus if NOT Android
-        const chatInput = document.getElementById('chat-textarea');
-        setTimeout(() => chatInput?.focus(), 0); 
+				// if (!/Android/i.test(navigator.userAgent)) {  // Only focus if NOT Android
+    //     const chatInput = document.getElementById('chat-textarea');
+    //     setTimeout(() => chatInput?.focus(), 0); 
     }
 			} else {
 				await goto('/');
@@ -312,9 +312,9 @@ $: if (selectedModels) {
 			settings.set(JSON.parse(localStorage.getItem('settings') ?? '{}'));
 		}
 
-		if (!/Android/i.test(navigator.userAgent)) { // Only focus if NOT Android
-        const chatInput = document.getElementById('chat-textarea');
-        setTimeout(() => chatInput?.focus(), 0); 
+		// if (!/Android/i.test(navigator.userAgent)) { // Only focus if NOT Android
+  //       const chatInput = document.getElementById('chat-textarea');
+  //       setTimeout(() => chatInput?.focus(), 0); 
     }
 	};
 
