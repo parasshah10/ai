@@ -371,7 +371,10 @@ $: if (selectedModels) {
 	const scrollToBottom = async () => {
 		await tick();
 		if (messagesContainerElement) {
-			messagesContainerElement.scrollTop = messagesContainerElement.scrollHeight;
+			messagesContainerElement.scrollTo({
+				top: messagesContainerElement.scrollHeight,
+				behavior: 'smooth'
+			});
 		}
 	};
 
