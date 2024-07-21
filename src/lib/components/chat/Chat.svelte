@@ -132,7 +132,7 @@ $: if (selectedModels) {
 
 	$: if (chatIdProp) {
 		(async () => {
-			console.log(chatIdProp);
+			// console.log(chatIdProp);
 			if (chatIdProp && (await loadChat())) {
 				await tick();
 				loaded = true;
@@ -304,13 +304,13 @@ $: if (selectedModels) {
 			$models.map((m) => m.id).includes(modelId) ? modelId : ''
 		);
 
-		const userSettings = await getUserSettings(localStorage.token);
+		// const userSettings = await getUserSettings(localStorage.token);
 
-		if (userSettings) {
-			settings.set(userSettings.ui);
-		} else {
-			settings.set(JSON.parse(localStorage.getItem('settings') ?? '{}'));
-		}
+		// if (userSettings) {
+		// 	settings.set(userSettings.ui);
+		// } else {
+		// 	settings.set(JSON.parse(localStorage.getItem('settings') ?? '{}'));
+		// }
 
 		const chatInput = document.getElementById('chat-textarea');
 		if (!/Android/i.test(navigator.userAgent)) { 
@@ -326,11 +326,11 @@ $: if (selectedModels) {
 		});
 
 		if (chat) {
-			tags = await getTags();
+			// tags = await getTags();
 			const chatContent = chat.chat;
 
 			if (chatContent) {
-				console.log(chatContent);
+				// console.log(chatContent);
 
 				selectedModels =
 					(chatContent?.models ?? undefined) !== undefined
@@ -369,14 +369,14 @@ $: if (selectedModels) {
 	};
 
 	const scrollToBottom = async () => {
-		await tick();
-		if (messagesContainerElement) {
-			messagesContainerElement.scrollTo({
-				top: messagesContainerElement.scrollHeight,
-				behavior: 'smooth'
-			});
-		}
-	};
+    await tick();
+    if (messagesContainerElement) {
+        messagesContainerElement.scrollTo({
+            top: messagesContainerElement.scrollHeight,
+            behavior: 'instant'
+        });
+    }
+};
 
 	const createMessagesList = (responseMessageId) => {
 		const message = history.messages[responseMessageId];
