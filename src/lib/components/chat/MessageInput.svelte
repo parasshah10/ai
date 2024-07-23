@@ -104,7 +104,7 @@
 		formData.append('image', file);
 
 		try {
-			const response = await fetch('https://api.imgbb.com/1/upload?key=c3486a864d8a14105edd406d554acb18', {
+			const response = await fetch('https://api.imgbb.com/1/upload?key=769cca89ac6111406b57de8a4fc1e613', {
 				method: 'POST',
 				body: formData
 			});
