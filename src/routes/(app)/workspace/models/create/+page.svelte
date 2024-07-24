@@ -257,50 +257,7 @@
 			let reader = new FileReader();
 			reader.onload = async (event) => {
         let originalImageUrl = await uploadToImgBB(inputFiles[0]);
-
-        const img = new Image();
-        img.crossOrigin = "anonymous"; // Set crossOrigin to anonymous
-        img.src = originalImageUrl;
-
-        img.onload = function () {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-
-            // Calculate the aspect ratio of the image
-            const aspectRatio = img.width / img.height;
-
-            // Calculate the new width and height to fit within 100x100
-            let newWidth, newHeight;
-            if (aspectRatio > 1) {
-                newWidth = 250 * aspectRatio;
-                newHeight = 250;
-            } else {
-                newWidth = 250;
-                newHeight = 250 / aspectRatio;
-            }
-
-            // Set the canvas size
-            canvas.width = 250;
-            canvas.height = 250;
-
-            // Calculate the position to center the image
-            const offsetX = (250 - newWidth) / 2;
-            const offsetY = (250 - newHeight) / 2;
-
-            // Draw the image on the canvas
-            ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
-
-            try {
-                // Get the base64 representation of the compressed image
-                const compressedSrc = canvas.toDataURL('image/jpeg');
-                // Display the compressed image
-                info.meta.profile_image_url = compressedSrc;
-            } catch (error) {
-                console.error('Error exporting canvas:', error);
-            }
-
-            inputFiles = null;
-        };
+        info.meta.profile_image_url = uploadedImageUrl;
     };
 
 			if (
