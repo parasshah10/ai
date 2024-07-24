@@ -52,6 +52,7 @@
 			toast.success($i18n.t('Copying to clipboard was successful!'));
 		}
 	};
+	
 
 	const confirmEditMessage = async (messageId, content) => {
 		let userPrompt = content;
@@ -307,6 +308,11 @@
 							{#if message.role === 'user'}
 								<UserMessage
 									on:delete={() => deleteMessageHandler(message.id)}
+									on:save={(e) => {
+										const { id, content } = e.detail;
+										history.messages[id].content = content;
+										updateChatMessages();
+									}}
 									{user}
 									{readOnly}
 									{message}

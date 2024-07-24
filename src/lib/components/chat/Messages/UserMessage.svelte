@@ -41,12 +41,20 @@
 		messageEditTextAreaElement?.focus();
 	};
 
-	const editMessageConfirmHandler = async () => {
-		confirmEditMessage(message.id, editedContent);
+	const editMessageConfirmHandler = async (sendNew) => {
+    if (editedContent === '') {
+        editedContent = ' ';
+    }
 
-		edit = false;
-		editedContent = '';
-	};
+    if (sendNew) {
+        confirmEditMessage(message.id, editedContent);
+    } else {
+        dispatch('save', { id: message.id, content: editedContent });
+    }
+
+    edit = false;
+    editedContent = '';
+};
 
 	const cancelEditMessage = () => {
 		edit = false;
@@ -152,7 +160,17 @@
 							id="save-edit-message-button"
 							class=" px-4 py-2 bg-gray-900 dark:bg-white hover:bg-gray-850 text-gray-100 dark:text-gray-800 transition rounded-3xl"
 							on:click={() => {
-								editMessageConfirmHandler();
+								editMessageConfirmHandler(false);
+							}}
+						>
+							{$i18n.t('Save')}
+						</button>
+
+						<button
+							id="send-edit-message-button"
+							class=" px-4 py-2 bg-gray-900 dark:bg-white hover:bg-gray-850 text-gray-100 dark:text-gray-800 transition rounded-3xl"
+							on:click={() => {
+								editMessageConfirmHandler(true);
 							}}
 						>
 							{$i18n.t('Send')}
