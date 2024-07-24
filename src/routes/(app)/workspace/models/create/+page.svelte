@@ -71,6 +71,28 @@
 			.toLowerCase();
 	}
 
+	const uploadToImgBB = async (file) => {
+		const formData = new FormData();
+		formData.append('image', file);
+
+		try {
+			const response = await fetch('https://api.imgbb.com/1/upload?key=769cca89ac6111406b57de8a4fc1e613', {
+				method: 'POST',
+				body: formData
+			});
+
+			const data = await response.json();
+			if (data.success) {
+				return data.data.url;
+			} else {
+				throw new Error(data.error.message);
+			}
+		} catch (error) {
+			toast.error(`ImgBB upload failed: ${error.message}`);
+			return null;
+		}
+	};
+
 	const addUsage = (base_model_id) => {
 		const baseModel = $models.find((m) => m.id === base_model_id);
 
@@ -234,75 +256,52 @@
 		on:change={() => {
 			let reader = new FileReader();
 			reader.onload = async (event) => {
-				let originalImageUrl = `${event.target.result}`;
+        let originalImageUrl = await uploadToImgBB(inputFiles[0]);
 
-				let character = await parseFile(inputFiles[0]).catch((error) => {
-					return null;
-				});
+        const img = new Image();
+        img.crossOrigin = "anonymous"; // Set crossOrigin to anonymous
+        img.src = originalImageUrl;
 
-				console.log(character);
+        img.onload = function () {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
 
-				if (character && character.character) {
-					character = character.character;
-					console.log(character);
+            // Calculate the aspect ratio of the image
+            const aspectRatio = img.width / img.height;
 
-					name = character.name;
+            // Calculate the new width and height to fit within 100x100
+            let newWidth, newHeight;
+            if (aspectRatio > 1) {
+                newWidth = 250 * aspectRatio;
+                newHeight = 250;
+            } else {
+                newWidth = 250;
+                newHeight = 250 / aspectRatio;
+            }
 
-					const pattern = /<\/?[a-z][\s\S]*>/i;
-					if (character.summary.match(pattern)) {
-						const turndownService = new TurndownService();
-						info.meta.description = turndownService.turndown(character.summary);
-					} else {
-						info.meta.description = character.summary;
-					}
+            // Set the canvas size
+            canvas.width = 250;
+            canvas.height = 250;
 
-					info.params.system = `Personality: ${character.personality}${
-						character?.scenario ? `\nScenario: ${character.scenario}` : ''
-					}${character?.greeting ? `\First Message: ${character.greeting}` : ''}${
-						character?.examples ? `\nExamples: ${character.examples}` : ''
-					}`;
-				}
+            // Calculate the position to center the image
+            const offsetX = (250 - newWidth) / 2;
+            const offsetY = (250 - newHeight) / 2;
 
-				const img = new Image();
-				img.src = originalImageUrl;
+            // Draw the image on the canvas
+            ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
 
-				img.onload = function () {
-					const canvas = document.createElement('canvas');
-					const ctx = canvas.getContext('2d');
+            try {
+                // Get the base64 representation of the compressed image
+                const compressedSrc = canvas.toDataURL('image/jpeg');
+                // Display the compressed image
+                info.meta.profile_image_url = compressedSrc;
+            } catch (error) {
+                console.error('Error exporting canvas:', error);
+            }
 
-					// Calculate the aspect ratio of the image
-					const aspectRatio = img.width / img.height;
-
-					// Calculate the new width and height to fit within 100x100
-					let newWidth, newHeight;
-					if (aspectRatio > 1) {
-						newWidth = 250 * aspectRatio;
-						newHeight = 250;
-					} else {
-						newWidth = 250;
-						newHeight = 250 / aspectRatio;
-					}
-
-					// Set the canvas size
-					canvas.width = 250;
-					canvas.height = 250;
-
-					// Calculate the position to center the image
-					const offsetX = (250 - newWidth) / 2;
-					const offsetY = (250 - newHeight) / 2;
-
-					// Draw the image on the canvas
-					ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
-
-					// Get the base64 representation of the compressed image
-					const compressedSrc = canvas.toDataURL('image/jpeg');
-
-					// Display the compressed image
-					info.meta.profile_image_url = compressedSrc;
-
-					inputFiles = null;
-				};
-			};
+            inputFiles = null;
+        };
+    };
 
 			if (
 				inputFiles &&
