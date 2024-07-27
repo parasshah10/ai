@@ -816,20 +816,22 @@
 												{/if}
 											</button>
 										</Tooltip>
-										<Tooltip content={$i18n.t('Branch')}>
+										<Tooltip content={$i18n.t('Branch')} placement="bottom">
 											<button
-												class="{isLastMessage
-													? 'visible'
-													: 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition branch-response-button"
-												on:click={() => {
-													branchConversation(message);
-												}}
+											  class="{isLastMessage ? 'visible' : 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition branch-response-button"
+											  on:click={() => {
+												branchConversation(message);
+											  }}
 											>
-												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v2.25A2.25 2.25 0 006 10.5Zm0 9.75h2.25A2.25 2.25 0 0010.5 18v-2.25a2.25 2.25 0 00-2.25-2.25H6a2.25 2.25 0 00-2.25 2.25V18A2.25 2.25 0 006 20.25Zm9.75-9.75H18a2.25 2.25 0 002.25-2.25V6A2.25 2.25 0 0018 3.75h-2.25A2.25 2.25 0 0013.5 6v2.25a2.25 2.25 0 002.25 2.25Z" />
-												</svg>
+											  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+												<circle cx="12" cy="18" r="3"></circle>
+												<circle cx="6" cy="6" r="3"></circle>
+												<circle cx="18" cy="6" r="3"></circle>
+												<path d="M18 9v1a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9"></path>
+												<line x1="12" y1="12" x2="12" y2="15"></line>
+											  </svg>
 											</button>
-										</Tooltip>
+										  </Tooltip>
 
 										{#if $config?.features.enable_image_generation && !readOnly}
 											<Tooltip content={$i18n.t('Generate Image')} placement="bottom">
