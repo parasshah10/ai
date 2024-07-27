@@ -25,6 +25,13 @@
 		revertSanitizedResponseContent,
 		sanitizeResponseContent
 	} from '$lib/utils';
+	import {
+		branchChatByIdAndMessages,
+		getChatList,
+		getChatListByTagName
+	} from '$lib/apis/chats';
+	import { chats, pinnedChats } from '$lib/stores';
+	import { goto } from '$app/navigation';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
 	import Name from './Name.svelte';
@@ -40,6 +47,7 @@
 	import Sparkles from '$lib/components/icons/Sparkles.svelte';
 
 	export let message;
+	export let chatId;
 	export let siblings;
 
 	export let isLastMessage = true;
@@ -48,6 +56,7 @@
 
 	export let updateChatMessages: Function;
 	export let confirmEditResponseMessage: Function;
+	export let getAncestralMessages: Function;
 	export let showPreviousMessage: Function;
 	export let showNextMessage: Function;
 	export let rateMessage: Function;
@@ -103,6 +112,14 @@
 	$: if (message) {
 		renderStyling();
 	}
+
+	const branchConversation = async () => {
+
+	let branchchatid = await branchChatByIdAndMessages(localStorage.token, chatId, message.id).then(res => res.id)
+	goto(`/c/${branchchatid}`);
+	await chats.set(await getChatList(localStorage.token));
+	await pinnedChats.set(await getChatListByTagName(localStorage.token, 'pinned'));
+};
 
 	const renderStyling = async () => {
 		await tick();
@@ -798,6 +815,20 @@
 														/>
 													</svg>
 												{/if}
+											</button>
+										</Tooltip>
+										<Tooltip content={$i18n.t('Branch')}>
+											<button
+												class="{isLastMessage
+													? 'visible'
+													: 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition branch-response-button"
+												on:click={() => {
+													branchConversation(message);
+												}}
+											>
+												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M13.5 16.875h3.375m0 0h3.375m-3.375 0V13.5m0 3.375v3.375M6 10.5h2.25a2.25 2.25 0 002.25-2.25V6a2.25 2.25 0 00-2.25-2.25H6A2.25 2.25 0 003.75 6v2.25A2.25 2.25 0 006 10.5Zm0 9.75h2.25A2.25 2.25 0 0010.5 18v-2.25a2.25 2.25 0 00-2.25-2.25H6a2.25 2.25 0 00-2.25 2.25V18A2.25 2.25 0 006 20.25Zm9.75-9.75H18a2.25 2.25 0 002.25-2.25V6A2.25 2.25 0 0018 3.75h-2.25A2.25 2.25 0 0013.5 6v2.25a2.25 2.25 0 002.25 2.25Z" />
+												</svg>
 											</button>
 										</Tooltip>
 

@@ -94,6 +94,8 @@ async def get_user_chat_list_by_user_id(
 @router.post("/new", response_model=Optional[ChatResponse])
 async def create_new_chat(form_data: ChatForm, user=Depends(get_verified_user)):
     try:
+        print('Creating new chat....: ')
+        print(form_data)
         chat = Chats.insert_new_chat(user.id, form_data)
         return ChatResponse(**{**chat.model_dump(), "chat": json.loads(chat.chat)})
     except Exception as e:
@@ -314,7 +316,7 @@ async def clone_chat_by_id(id: str, user=Depends(get_verified_user)):
     if chat:
 
         chat_body = json.loads(chat.chat)
-        print(chat_body)
+        print(chat_body["history"])
         updated_chat = {
             **chat_body,
             "originalChatId": chat.id,
@@ -328,6 +330,49 @@ async def clone_chat_by_id(id: str, user=Depends(get_verified_user)):
             status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.DEFAULT()
         )
 
+############################
+# BranchChat
+############################
+
+
+@router.get("/{id}/{messageid}/branch", response_model=Optional[ChatResponse])
+async def branch_chat_by_id(id: str, messageid: str, user=Depends(get_verified_user)):
+    chat = Chats.get_chat_by_id_and_user_id(id, user.id)
+    if chat:
+        chat_body = json.loads(chat.chat)
+        message = chat_body["history"]["messages"][messageid]
+        messages = []
+        currentMessage = message
+        while currentMessage is not None:
+            messages.insert(0, currentMessage)
+            try:
+                currentMessage = chat_body["history"]["messages"][currentMessage["parentId"]]
+            except KeyError:
+                currentMessage = None
+
+        # Create a set of message IDs for efficient lookup
+        message_ids = {msg["id"] for msg in messages}
+        
+        # Remove messages that are not in the branch
+        chat_body["history"]["messages"] = {
+            msg_id: msg for msg_id, msg in chat_body["history"]["messages"].items()
+            if msg_id in message_ids
+        }
+        chat_body["messages"] = messages
+        chat_body["history"]["currentId"] = messageid
+        
+        updated_chat = {
+            **chat_body,
+            "originalChatId": chat.id,
+            "branchPointMessageId": chat_body["history"]["currentId"],
+            "title": f"Branch of {chat.title}",
+        }
+        chat = Chats.insert_new_chat(user.id, ChatForm(**{"chat": updated_chat}))
+        return ChatResponse(**{**chat.model_dump(), "chat": json.loads(chat.chat)})
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=ERROR_MESSAGES.DEFAULT()
+        )
 
 ############################
 # ArchiveChat

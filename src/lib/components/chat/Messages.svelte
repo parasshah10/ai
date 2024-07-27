@@ -101,6 +101,8 @@
 		await updateChatMessages();
 	};
 
+
+
 	const rateMessage = async (messageId, rating) => {
 		history.messages[messageId].annotation = {
 			...history.messages[messageId].annotation,
@@ -334,6 +336,7 @@
 										siblings={history.messages[message.parentId]?.childrenIds ?? []}
 										isLastMessage={messageIdx + 1 === messages.length}
 										{readOnly}
+										{chatId}
 										{updateChatMessages}
 										{confirmEditResponseMessage}
 										{showPreviousMessage}

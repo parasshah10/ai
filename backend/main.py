@@ -197,11 +197,11 @@ def get_port_from_args():
         if arg == "--port" and i + 1 < len(sys.argv):
             return sys.argv[i + 1]
     return 8080
-ip_address = getIP()
+# ip_address = getIP()
 port = get_port_from_args()
 
 print("\033[92m" + "="*50)
-print(f"\nServer running at \033[1m{ip_address}:{port}/ \n")
+print(f"\nServer running at \033[1mSomeIP:{port}/ \n")
 print("="*50 + "\n\n\033[0m")
 
 app.state.config = AppConfig()
