@@ -56,7 +56,6 @@
 
 	export let updateChatMessages: Function;
 	export let confirmEditResponseMessage: Function;
-	export let getAncestralMessages: Function;
 	export let showPreviousMessage: Function;
 	export let showNextMessage: Function;
 	export let rateMessage: Function;
