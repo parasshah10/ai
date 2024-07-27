@@ -152,9 +152,9 @@
 		const element = document.getElementById('messages-container');
 		autoScroll = element.scrollHeight - element.scrollTop <= element.clientHeight + 50;
 
-		setTimeout(() => {
-			scrollToBottom();
-		}, 100);
+		// setTimeout(() => {
+		// 	scrollToBottom();
+		// }, 100);
 	};
 
 	const showNextMessage = async (message) => {
@@ -201,9 +201,9 @@
 		const element = document.getElementById('messages-container');
 		autoScroll = element.scrollHeight - element.scrollTop <= element.clientHeight + 50;
 
-		setTimeout(() => {
-			scrollToBottom();
-		}, 100);
+		// setTimeout(() => {
+		// 	scrollToBottom();
+		// }, 100);
 	};
 
 	const deleteMessageHandler = async (messageId) => {
