@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
 	import { marked } from 'marked';
+	import { QuickScore } from 'quick-score';
 
 	import { flyAndScale } from '$lib/utils/transitions';
 	import { createEventDispatcher, onMount, getContext, tick } from 'svelte';
@@ -17,7 +18,6 @@
 	import { getModels } from '$lib/apis';
 
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
-	import WebParams from '$lib/components/documents/Settings/WebParams.svelte';
 
 	const i18n = getContext('i18n');
 	const dispatch = createEventDispatcher();
@@ -34,7 +34,7 @@
 		[key: string]: any;
 	} = [];
 
-	export let className = 'w-[30rem]';
+	export let className = 'w-[32rem]';
 
 	let show = false;
 
@@ -44,18 +44,23 @@
 	let searchValue = '';
 	let ollamaVersion = null;
 
-	let pseudoSelectedIndex = 0;
+	let selectedModelIdx = 0;
 
-	$: filteredItems = items.filter(
-		(item) =>
-			(searchValue
-				? item.value.toLowerCase().includes(searchValue.toLowerCase()) ||
-				  item.label.toLowerCase().includes(searchValue.toLowerCase()) ||
-				  (item.model?.info?.meta?.tags ?? []).some((tag) =>
-						tag.name.toLowerCase().includes(searchValue.toLowerCase())
-				  )
-				: true) && !(item.model?.info?.meta?.hidden ?? false)
+	let fuzzySearch = new QuickScore(
+		items
+			.filter((item) => !item.model?.info?.meta?.hidden)
+			.map((item) => {
+				// used so QuickScore can fuzz tags.
+				return {
+					...item,
+					flattened_tags: item.model?.info?.meta?.tags?.map((tag) => tag.name).join(' ')
+				};
+			}),
+		{
+			keys: ['value', 'model.name', 'flattened_tags']
+		}
 	);
+	$: filteredItems = searchValue ? fuzzySearch.search(searchValue).map((item) => item.item) : items;
 
 	const pullModelHandler = async () => {
 		const sanitizedModelTag = searchValue.trim().replace(/^ollama\s+(run|pull)\s+/, '');
@@ -205,7 +210,7 @@
 	bind:open={show}
 	onOpenChange={async () => {
 		searchValue = '';
-		pseudoSelectedIndex = 0; // when the dropdown is closed, reset the selected index
+		selectedModelIdx = 0;
 		window.setTimeout(() => document.getElementById('model-search-input')?.focus(), 0);
 	}}
 	closeFocus={false}
@@ -243,20 +248,20 @@
 						placeholder={searchPlaceholder}
 						autocomplete="off"
 						on:keydown={(e) => {
-							if (e.code === 'Enter') {
-								value = filteredItems[pseudoSelectedIndex].value;
+							if (e.code === 'Enter' && filteredItems.length > 0) {
+								value = filteredItems[selectedModelIdx].value;
 								show = false;
 								return; // dont need to scroll on selection
 							} else if (e.code === 'ArrowDown') {
-								pseudoSelectedIndex = Math.min(pseudoSelectedIndex + 1, filteredItems.length - 1);
+								selectedModelIdx = Math.min(selectedModelIdx + 1, filteredItems.length - 1);
 							} else if (e.code === 'ArrowUp') {
-								pseudoSelectedIndex = Math.max(pseudoSelectedIndex - 1, 0);
+								selectedModelIdx = Math.max(selectedModelIdx - 1, 0);
 							} else {
 								// if the user types something, reset to the top selection.
-								pseudoSelectedIndex = 0;
+								selectedModelIdx = 0;
 							}
 
-							const item = document.querySelector(`[data-pseudo-selected="true"]`);
+							const item = document.querySelector(`[data-arrow-selected="true"]`);
 							item?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
 						}}
 					/>
@@ -270,13 +275,13 @@
 					<button
 						aria-label="model-item"
 						class="flex w-full text-left font-medium line-clamp-1 select-none items-center rounded-button py-2 pl-3 pr-1.5 text-sm text-gray-700 dark:text-gray-100 outline-none transition-all duration-75 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg cursor-pointer data-[highlighted]:bg-muted {index ===
-						pseudoSelectedIndex
+						selectedModelIdx
 							? 'bg-gray-100 dark:bg-gray-800 group-hover:bg-transparent'
 							: ''}"
-						data-pseudo-selected={index === pseudoSelectedIndex}
+						data-arrow-selected={index === selectedModelIdx}
 						on:click={() => {
 							value = item.value;
-							pseudoSelectedIndex = index;
+							selectedModelIdx = index;
 
 							show = false;
 						}}
@@ -299,8 +304,8 @@
 										<div class="flex items-center min-w-fit">
 											<img
 												src={item.model?.info?.meta?.profile_image_url ?? '/static/favicon.png'}
-												alt="Model ImageURl"
-												class="rounded-full w-5 h-5 flex items-center mr-2"
+												alt="Model"
+												class="rounded-full size-5 flex items-center mr-2"
 											/>
 											{item.label}
 										</div>
@@ -328,23 +333,11 @@
 									{/if}
 								</div>
 
-								{#if !$mobile && (item?.model?.info?.meta?.tags ?? []).length > 0}
-									<div class="flex gap-0.5 self-center items-center h-full translate-y-[0.5px]">
-										{#each item.model?.info?.meta.tags as tag}
-											<div
-												class=" text-xs font-bold px-1 rounded uppercase line-clamp-1 bg-gray-500/20 text-gray-700 dark:text-gray-200"
-											>
-												{tag.name}
-											</div>
-										{/each}
-									</div>
-								{/if}
-
 								<!-- {JSON.stringify(item.info)} -->
 
 								{#if item.model.owned_by === 'openai'}
 									<Tooltip content={`${'External'}`}>
-										<div class="">
+										<div class="translate-y-[1px]">
 											<svg
 												xmlns="http://www.w3.org/2000/svg"
 												viewBox="0 0 16 16"
@@ -375,7 +368,7 @@
 											)
 										)}`}
 									>
-										<div class="">
+										<div class=" translate-y-[1px]">
 											<svg
 												xmlns="http://www.w3.org/2000/svg"
 												fill="none"
@@ -392,6 +385,20 @@
 											</svg>
 										</div>
 									</Tooltip>
+								{/if}
+
+								{#if !$mobile && (item?.model?.info?.meta?.tags ?? []).length > 0}
+									<div class="flex gap-0.5 self-center items-center h-full translate-y-[0.5px]">
+										{#each item.model?.info?.meta.tags as tag}
+											<Tooltip content={tag.name}>
+												<div
+													class=" text-xs font-bold px-1 rounded uppercase line-clamp-1 bg-gray-500/20 text-gray-700 dark:text-gray-200"
+												>
+													{tag.name}
+												</div>
+											</Tooltip>
+										{/each}
+									</div>
 								{/if}
 							</div>
 						</div>
