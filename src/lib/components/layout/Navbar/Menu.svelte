@@ -4,7 +4,7 @@
 
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
-
+	import Modal from '$lib/components/common/Modal.svelte';
 	import { showSettings } from '$lib/stores';
 	import { flyAndScale } from '$lib/utils/transitions';
 
@@ -14,7 +14,16 @@
 	import { downloadChatAsPDF } from '$lib/apis/utils';
 
 	const i18n = getContext('i18n');
+	let showImportModal = false;
+    let messagesToImport = '';
+	const handleImport = () => {
+        // Here you will add the logic to handle the imported messages
+        console.log("Importing messages:", messagesToImport); 
+        // ... (future functionality: Process messagesToImport)
 
+        // Close the modal after handling the import
+        showImportModal = false;
+    };
 	export let shareEnabled: boolean = false;
 	export let shareHandler: Function;
 	export let downloadHandler: Function;
@@ -197,12 +206,53 @@
 					</DropdownMenu.Item>
 				</DropdownMenu.SubContent>
 			</DropdownMenu.Sub>
-
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={() => {
+					showImportModal = true; 
+				}}
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke-width="1.5"
+					stroke="currentColor"
+					class="w-4 h-4"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+					/>
+				</svg>
+				<div class="flex items-center">{$i18n.t('Import')}</div>
+			</DropdownMenu.Item>
 			<hr class="border-gray-100 dark:border-gray-800 mt-2.5 mb-1.5" />
-
+			
 			<div class="flex p-1">
 				<Tags chatId={chat.id} />
 			</div>
 		</DropdownMenu.Content>
 	</div>
 </Dropdown>
+<Modal bind:show={showImportModal} size="md">
+    <div class="px-6 pt-5 pb-6 w-full flex flex-col justify-center">
+        <div class="text-xl font-medium dark:text-gray-300 mb-4">{$i18n.t('Import Messages')}</div>
+        <textarea 
+            bind:value={messagesToImport} 
+            placeholder={$i18n.t('Enter messages to import')} 
+            class="w-full rounded-lg px-4 py-3 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-none resize-none" 
+            rows="10"
+        />
+        <div class="flex justify-end pt-4 text-sm">
+            <button 
+                class="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-gray-100 transition rounded-lg"
+                type="button"
+                on:click={handleImport}
+            >
+                {$i18n.t('Import')}
+            </button>
+        </div>
+    </div>
+</Modal>

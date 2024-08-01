@@ -1377,23 +1377,24 @@ $: if (selectedModels) {
 	const generateChatTitle = async (userPrompt) => {
 		if ($settings?.title?.auto ?? true) {
 			const formattedMessages = messages
-			.map(m => `${m.role}: ${m.content}`)
+			.map(m => `[${m.role.toUpperCase()}]: ${m.content}`)
 			.join('\n\n');
+			
 			const title = await generateTitle(
-				localStorage.token,
-				selectedModels[0],
-				formattedMessages,
-				$chatId
+			localStorage.token,
+			selectedModels[0],
+			formattedMessages,
+			$chatId
 			).catch((error) => {
-				console.error(error);
-				return 'New Chat';
+			console.error(error);
+			return 'New Chat';
 			});
 
 			return title;
 		} else {
 			return `${userPrompt}`;
 		}
-	};
+		};
 
 	const setChatTitle = async (_chatId, _title) => {
 		if (_chatId === $chatId) {

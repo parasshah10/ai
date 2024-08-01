@@ -816,6 +816,7 @@
 												{/if}
 											</button>
 										</Tooltip>
+										{#if !readOnly}
 										<Tooltip content={$i18n.t('Branch')} placement="bottom">
 											<button
 											  class="{isLastMessage ? 'visible' : 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition branch-response-button"
@@ -832,7 +833,7 @@
 											  </svg>
 											</button>
 										  </Tooltip>
-
+										{/if}
 										{#if $config?.features.enable_image_generation && !readOnly}
 											<Tooltip content={$i18n.t('Generate Image')} placement="bottom">
 												<button
