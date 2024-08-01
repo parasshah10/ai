@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { DropdownMenu } from 'bits-ui';
 	import { getContext } from 'svelte';
-
+	import { copyToClipboard } from '$lib/utils'
+	import { toast } from 'svelte-sonner';
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
 	import Modal from '$lib/components/common/Modal.svelte';
@@ -79,6 +80,18 @@
 		});
 		saveAs(blob, `chat-export-${Date.now()}.json`);
 	};
+	const copyTextToClipboard = () => {
+        const _chat = chat.chat;
+        let chatText = _chat.messages.reduce((a, message) => {
+            return `${a}### ${message.role.toUpperCase()}\n${message.content}\n\n`;
+        }, '');
+
+        // Add extra set of role markers at the end
+        chatText += '### USER\n\n\n### ASSISTANT\n';
+
+        copyToClipboard(chatText);
+        toast.success($i18n.t('Chat content copied to clipboard'));
+    };
 </script>
 
 <Dropdown
@@ -195,8 +208,14 @@
 					>
 						<div class="flex items-center line-clamp-1">{$i18n.t('Plain text (.txt)')}</div>
 					</DropdownMenu.Item>
-
 					<DropdownMenu.Item
+					class="flex gap-2 items-center px-3 py-2 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+						on:click={copyTextToClipboard}
+					>
+						<div class="flex items-center line-clamp-1">{$i18n.t('Copy chat to clipboard')}</div>
+					</DropdownMenu.Item>
+					<DropdownMenu.Item
+
 						class="flex gap-2 items-center px-3 py-2 text-sm  cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
 						on:click={() => {
 							downloadPdf();
