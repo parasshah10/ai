@@ -18,7 +18,6 @@
 	import { stringify } from 'postcss';
 	import { parseFile } from '$lib/utils/characters';
 	import FiltersSelector from '$lib/components/workspace/Models/FiltersSelector.svelte';
-	import ActionsSelector from '$lib/components/workspace/Models/ActionsSelector.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -64,7 +63,6 @@
 	let toolIds = [];
 	let knowledge = [];
 	let filterIds = [];
-	let actionIds = [];
 
 	$: if (name) {
 		id = name
@@ -72,6 +70,28 @@
 			.replace(/[^a-zA-Z0-9-]/g, '')
 			.toLowerCase();
 	}
+
+	const uploadToImgBB = async (file) => {
+		const formData = new FormData();
+		formData.append('image', file);
+
+		try {
+			const response = await fetch('https://api.imgbb.com/1/upload?key=769cca89ac6111406b57de8a4fc1e613', {
+				method: 'POST',
+				body: formData
+			});
+
+			const data = await response.json();
+			if (data.success) {
+				return data.data.url;
+			} else {
+				throw new Error(data.error.message);
+			}
+		} catch (error) {
+			toast.error(`ImgBB upload failed: ${error.message}`);
+			return null;
+		}
+	};
 
 	const addUsage = (base_model_id) => {
 		const baseModel = $models.find((m) => m.id === base_model_id);
@@ -114,14 +134,6 @@
 		} else {
 			if (info.meta.filterIds) {
 				delete info.meta.filterIds;
-			}
-		}
-
-		if (actionIds.length > 0) {
-			info.meta.actionIds = actionIds;
-		} else {
-			if (info.meta.actionIds) {
-				delete info.meta.actionIds;
 			}
 		}
 
@@ -197,10 +209,6 @@
 			filterIds = [...model?.info?.meta?.filterIds];
 		}
 
-		if (model?.info?.meta?.actionIds) {
-			actionIds = [...model?.info?.meta?.actionIds];
-		}
-
 		info = {
 			...info,
 			...model.info
@@ -248,75 +256,9 @@
 		on:change={() => {
 			let reader = new FileReader();
 			reader.onload = async (event) => {
-				let originalImageUrl = `${event.target.result}`;
-
-				let character = await parseFile(inputFiles[0]).catch((error) => {
-					return null;
-				});
-
-				console.log(character);
-
-				if (character && character.character) {
-					character = character.character;
-					console.log(character);
-
-					name = character.name;
-
-					const pattern = /<\/?[a-z][\s\S]*>/i;
-					if (character.summary.match(pattern)) {
-						const turndownService = new TurndownService();
-						info.meta.description = turndownService.turndown(character.summary);
-					} else {
-						info.meta.description = character.summary;
-					}
-
-					info.params.system = `Personality: ${character.personality}${
-						character?.scenario ? `\nScenario: ${character.scenario}` : ''
-					}${character?.greeting ? `\First Message: ${character.greeting}` : ''}${
-						character?.examples ? `\nExamples: ${character.examples}` : ''
-					}`;
-				}
-
-				const img = new Image();
-				img.src = originalImageUrl;
-
-				img.onload = function () {
-					const canvas = document.createElement('canvas');
-					const ctx = canvas.getContext('2d');
-
-					// Calculate the aspect ratio of the image
-					const aspectRatio = img.width / img.height;
-
-					// Calculate the new width and height to fit within 100x100
-					let newWidth, newHeight;
-					if (aspectRatio > 1) {
-						newWidth = 250 * aspectRatio;
-						newHeight = 250;
-					} else {
-						newWidth = 250;
-						newHeight = 250 / aspectRatio;
-					}
-
-					// Set the canvas size
-					canvas.width = 250;
-					canvas.height = 250;
-
-					// Calculate the position to center the image
-					const offsetX = (250 - newWidth) / 2;
-					const offsetY = (250 - newHeight) / 2;
-
-					// Draw the image on the canvas
-					ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
-
-					// Get the base64 representation of the compressed image
-					const compressedSrc = canvas.toDataURL('image/jpeg');
-
-					// Display the compressed image
-					info.meta.profile_image_url = compressedSrc;
-
-					inputFiles = null;
-				};
-			};
+        let originalImageUrl = await uploadToImgBB(inputFiles[0]);
+        info.meta.profile_image_url = uploadedImageUrl;
+    };
 
 			if (
 				inputFiles &&
@@ -636,13 +578,6 @@
 			<FiltersSelector
 				bind:selectedFilterIds={filterIds}
 				filters={$functions.filter((func) => func.type === 'filter')}
-			/>
-		</div>
-
-		<div class="my-2">
-			<ActionsSelector
-				bind:selectedActionIds={actionIds}
-				actions={$functions.filter((func) => func.type === 'action')}
 			/>
 		</div>
 
