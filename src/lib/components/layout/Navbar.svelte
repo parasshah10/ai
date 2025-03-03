@@ -38,6 +38,8 @@
 	export let selectedModels;
 	export let showModelSelector = true;
 
+	export let createMessageSequence: Function;
+
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
 </script>
@@ -86,6 +88,7 @@
 					<Menu
 						{chat}
 						{shareEnabled}
+						{createMessageSequence}
 						shareHandler={() => {
 							showShareChatModal = !showShareChatModal;
 						}}

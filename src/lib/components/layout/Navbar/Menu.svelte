@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { DropdownMenu } from 'bits-ui';
-	import { getContext } from 'svelte';
+	import { getContext, createEventDispatcher } from 'svelte';
+	import BulkMessageModal from '../../chat/BulkMessageModal.svelte';
+	const dispatch = createEventDispatcher();
+	
+	let show = false;
+	let showBulkModal = false;
 
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
@@ -31,16 +36,35 @@
 	export let shareEnabled: boolean = false;
 	export let shareHandler: Function;
 	export let downloadHandler: Function;
-
-	// export let tagHandler: Function;
+	export let createMessageSequence: Function;
 
 	export let chat;
 	export let onClose: Function = () => {};
 
+	function handleBulkModalOpen() {
+		showBulkModal = true;
+		show = false; // Close the dropdown when opening modal
+	}
 	const getChatAsText = async () => {
 		const history = chat.chat.history;
 		const messages = createMessagesList(history, history.currentId);
-		const chatText = messages.reduce((a, message, i, arr) => {
+		
+		// Start with the system message if it exists
+		let chatText = '';
+		if (chat.chat.params?.system) {
+			chatText += `### SYSTEM\n${chat.chat.params.system}\n\n`;
+		}
+		
+		// Create a new array where the last message's content is replaced with an empty string
+		const modifiedMessages = messages.map((message, index) => {
+			if (index === messages.length - 1) {
+				return { ...message, content: '' }; // Set content of the last message to empty
+			}
+			return message;
+		});
+
+		// Append the rest of the messages
+		chatText += modifiedMessages.reduce((a, message) => {
 			return `${a}### ${message.role.toUpperCase()}\n${message.content}\n\n`;
 		}, '');
 
@@ -99,18 +123,12 @@
 	};
 </script>
 
-<Dropdown
-	on:change={(e) => {
-		if (e.detail === false) {
-			onClose();
-		}
-	}}
->
+<Dropdown bind:show>
 	<slot />
 
 	<div slot="content">
 		<DropdownMenu.Content
-			class="w-full max-w-[200px] rounded-xl px-1 py-1.5  z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg"
+			class="w-full max-w-[200px] rounded-xl px-1 py-1.5 z-50 bg-white dark:bg-gray-850 dark:text-white shadow-lg"
 			sideOffset={8}
 			side="bottom"
 			align="end"
@@ -279,9 +297,18 @@
 				<Clipboard className=" size-4" strokeWidth="1.5" />
 				<div class="flex items-center">{$i18n.t('Copy')}</div>
 			</DropdownMenu.Item>
-
+			<DropdownMenu.Item
+				class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+				on:click={handleBulkModalOpen}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+					<path d="M2.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-9zm9-1a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 1 12.5v-9A1.5 1.5 0 0 1 2.5 2h9z"/>
+					<path d="M8.5 7.5a.5.5 0 0 0-1 0v2h-2a.5.5 0 0 0 0 1h2v2a.5.5 0 0 0 1 0v-2h2a.5.5 0 0 0 0-1h-2v-2z"/>
+				</svg>
+				<div class="flex items-center">{$i18n.t('Insert Messages')}</div>
+			</DropdownMenu.Item>
 			{#if !$temporaryChatEnabled}
-				<hr class="border-gray-100 dark:border-gray-850 my-0.5" />
+				<hr class="border-gray-50 dark:border-gray-850 my-0.5" />
 
 				<div class="flex p-1">
 					<Tags chatId={chat.id} />
@@ -290,3 +317,10 @@
 		</DropdownMenu.Content>
 	</div>
 </Dropdown>
+
+<BulkMessageModal 
+	bind:show={showBulkModal}
+	on:submit={({ detail }) => {
+		createMessageSequence(detail.messages);
+	}}
+/>

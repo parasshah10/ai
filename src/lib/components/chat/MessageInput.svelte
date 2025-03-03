@@ -26,6 +26,7 @@
 	import { uploadFile } from '$lib/apis/files';
 	import { generateAutoCompletion } from '$lib/apis';
 	import { deleteFileById } from '$lib/apis/files';
+	import { uploadImageToCloudinary } from '$lib/apis';
 
 	import { WEBUI_BASE_URL, WEBUI_API_BASE_URL, PASTED_TEXT_CHARACTER_LIMIT } from '$lib/constants';
 
@@ -241,28 +242,24 @@
 					toast.error($i18n.t('Selected model(s) do not support image inputs'));
 					return;
 				}
-				let reader = new FileReader();
-				reader.onload = async (event) => {
-					let imageUrl = event.target.result;
-
-					if ($settings?.imageCompression ?? false) {
-						const width = $settings?.imageCompressionSize?.width ?? null;
-						const height = $settings?.imageCompressionSize?.height ?? null;
-
-						if (width || height) {
-							imageUrl = await compressImage(imageUrl, width, height);
+				(async () => {
+					try {
+						// Upload to Cloudinary
+						const uploadedImage = await uploadImageToCloudinary(localStorage.token, file);
+						
+						if (uploadedImage) {
+							files = [
+								...files,
+								{
+									type: 'image',
+									url: uploadedImage.url
+								}
+							];
 						}
+					} catch (error) {
+						toast.error('Failed to upload image');
 					}
-
-					files = [
-						...files,
-						{
-							type: 'image',
-							url: `${imageUrl}`
-						}
-					];
-				};
-				reader.readAsDataURL(file);
+				})();
 			} else {
 				uploadFileHandler(file);
 			}
@@ -840,19 +837,22 @@
 														for (const item of clipboardData.items) {
 															if (item.type.indexOf('image') !== -1) {
 																const blob = item.getAsFile();
-																const reader = new FileReader();
-
-																reader.onload = function (e) {
-																	files = [
-																		...files,
-																		{
-																			type: 'image',
-																			url: `${e.target.result}`
+																try {
+                															// Upload to Cloudinary
+																			const uploadedImage = await uploadImageToCloudinary(localStorage.token, blob);
+																			
+																			if (uploadedImage) {
+																				files = [
+																					...files,
+																					{
+																						type: 'image',
+																						url: uploadedImage.url
+																					}
+																				];
+																			}
+																		} catch (error) {
+																			toast.error('Failed to upload image');
 																		}
-																	];
-																};
-
-																reader.readAsDataURL(blob);
 															} else if (item.type === 'text/plain') {
 																if ($settings?.largeTextAsFile ?? false) {
 																	const text = clipboardData.getData('text/plain');
@@ -1037,19 +1037,22 @@
 													for (const item of clipboardData.items) {
 														if (item.type.indexOf('image') !== -1) {
 															const blob = item.getAsFile();
-															const reader = new FileReader();
-
-															reader.onload = function (e) {
-																files = [
-																	...files,
-																	{
-																		type: 'image',
-																		url: `${e.target.result}`
-																	}
-																];
-															};
-
-															reader.readAsDataURL(blob);
+															try {
+																// Upload to Cloudinary
+																const uploadedImage = await uploadImageToCloudinary(localStorage.token, blob);
+																
+																if (uploadedImage) {
+																	files = [
+																		...files,
+																		{
+																			type: 'image',
+																			url: uploadedImage.url
+																		}
+																	];
+																}
+															} catch (error) {
+																toast.error('Failed to upload image');
+															}
 														} else if (item.type === 'text/plain') {
 															if ($settings?.largeTextAsFile ?? false) {
 																const text = clipboardData.getData('text/plain');

@@ -52,6 +52,7 @@
 				{history}
 				{messageId}
 				isFirstMessage={idx === 0}
+				isSecondLastMessage={history.messages[history.currentId]?.parentId === messageId}
 				siblings={history.messages[messageId].parentId !== null
 					? (history.messages[history.messages[messageId].parentId]?.childrenIds ?? [])
 					: (Object.values(history.messages)

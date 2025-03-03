@@ -350,6 +350,29 @@ export const generateTitle = async (
 	return res?.choices[0]?.message?.content.replace(/["']/g, '') ?? 'New Chat';
 };
 
+export const uploadImageToCloudinary = async (token: string, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${WEBUI_BASE_URL}/api/upload/cloudinary`, {
+        method: 'POST',
+        headers: {
+            ...(token && { authorization: `Bearer ${token}` })
+        },
+        body: formData
+    })
+    .then(async (res) => {
+        if (!res.ok) throw await res.json();
+        return res.json();
+    })
+    .catch((err) => {
+        console.log(err);
+        return null;
+    });
+
+    return res;
+};
+
 export const generateTags = async (
 	token: string = '',
 	model: string,
