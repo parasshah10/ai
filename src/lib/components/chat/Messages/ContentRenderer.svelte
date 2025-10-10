@@ -17,6 +17,7 @@
 	import { createMessagesList } from '$lib/utils';
 
 	export let id;
+	export let role = 'assistant';
 	export let content;
 
 	export let history;
@@ -136,6 +137,7 @@
 <div bind:this={contentContainerElement}>
 	<Markdown
 		{id}
+		{role}
 		{content}
 		{model}
 		{save}

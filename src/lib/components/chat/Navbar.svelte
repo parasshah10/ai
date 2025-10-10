@@ -48,6 +48,7 @@
 	export let history;
 	export let selectedModels;
 	export let showModelSelector = true;
+	export let createMessageSequence: Function;
 
 	export let onSaveTempChat: () => {};
 	export let archiveChatHandler: (id: string) => void;
@@ -182,6 +183,7 @@
 						<Menu
 							{chat}
 							{shareEnabled}
+							{createMessageSequence}
 							shareHandler={() => {
 								showShareChatModal = !showShareChatModal;
 							}}

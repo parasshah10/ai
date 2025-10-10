@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { DropdownMenu } from 'bits-ui';
-	import { getContext, tick } from 'svelte';
+	import { getContext, tick, createEventDispatcher } from 'svelte';
+	import BulkMessageModal from '../../chat/BulkMessageModal.svelte';
+	const dispatch = createEventDispatcher();
+	
+	let show = false;
+	let showBulkModal = false;
 
 	import fileSaver from 'file-saver';
 	const { saveAs } = fileSaver;
@@ -44,20 +49,69 @@
 	export let moveChatHandler: Function;
 
 	export let archiveChatHandler: Function;
-
-	// export let tagHandler: Function;
+	export let createMessageSequence: Function;
 
 	export let chat;
 	export let onClose: Function = () => {};
 
 	let showFullMessages = false;
 
-	const getChatAsText = async () => {
+	function handleBulkModalOpen() {
+		showBulkModal = true;
+		show = false; // Close the dropdown when opening modal
+	}
+	const getChatAsText = () => {
 		const history = chat.chat.history;
 		const messages = createMessagesList(history, history.currentId);
-		const chatText = messages.reduce((a, message, i, arr) => {
-			return `${a}### ${message.role.toUpperCase()}\n${message.content}\n\n`;
-		}, '');
+
+		// Initialize empty chat text
+		let chatText = '';
+
+		// Add system message if it exists
+		if (chat.chat.params?.system) {
+			chatText += `<system_message>\n${chat.chat.params.system}\n</system_message>\n\n`;
+		}
+
+		// Find the most recent user message
+		let latestUserMessageIndex = -1;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].role.toLowerCase() === 'user') {
+				latestUserMessageIndex = i;
+				break;
+			}
+		}
+
+		// Store the latest user message
+		const latestUserMessage = latestUserMessageIndex >= 0 ? messages[latestUserMessageIndex] : null;
+
+		// Find the most recent assistant message (would be removed)
+		let latestAssistantMessageIndex = -1;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].role.toLowerCase() === 'assistant') {
+				latestAssistantMessageIndex = i;
+				break;
+			}
+		}
+
+		// Create a filtered list without the latest assistant message and without the latest user message
+		const filteredMessages = messages.filter((message, index) => {
+			return index !== latestAssistantMessageIndex && index !== latestUserMessageIndex;
+		});
+
+		// Only create conversation history section if there are at least 2 messages left
+		if (filteredMessages.length >= 2) {
+			chatText += '<conversation_history>\n';
+			// Format the filtered messages
+			chatText += filteredMessages.reduce((a, message) => {
+				return `${a}### ${message.role.toUpperCase()}\n${message.content}\n\n`;
+			}, '');
+			chatText += '</conversation_history>\n\n';
+		}
+
+		// Add the latest user message at the end (outside of conversation history)
+		if (latestUserMessage) {
+			chatText += latestUserMessage.content;
+		}
 
 		return chatText.trim();
 	};
@@ -267,13 +321,7 @@
 	</div>
 {/if}
 
-<Dropdown
-	on:change={(e) => {
-		if (e.detail === false) {
-			onClose();
-		}
-	}}
->
+<Dropdown bind:show>
 	<slot />
 
 	<div slot="content">
@@ -418,12 +466,13 @@
 				class="flex gap-2 items-center px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl select-none w-full"
 				id="chat-copy-button"
 				on:click={async () => {
-					const res = await copyToClipboard(await getChatAsText()).catch((e) => {
-						console.error(e);
-					});
+					const textToCopy = getChatAsText();
+					const res = await copyToClipboard(textToCopy);
 
 					if (res) {
 						toast.success($i18n.t('Copied to clipboard'));
+					} else {
+						toast.error($i18n.t('Failed to copy to clipboard'));
 					}
 				}}
 			>
@@ -472,6 +521,17 @@
 					<div class="flex items-center">{$i18n.t('Archive')}</div>
 				</DropdownMenu.Item>
 
+				<DropdownMenu.Item
+					class="flex gap-2 items-center px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 rounded-md"
+					on:click={handleBulkModalOpen}
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
+						<path d="M2.5 3a.5.5 0 0 0-.5.5v9a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5v-9a.5.5 0 0 0-.5-.5h-9zm9-1a1.5 1.5 0 0 1 1.5 1.5v9a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 1 12.5v-9A1.5 1.5 0 0 1 2.5 2h9z"/>
+						<path d="M8.5 7.5a.5.5 0 0 0-1 0v2h-2a.5.5 0 0 0 0 1h2v2a.5.5 0 0 0 1 0v-2h2a.5.5 0 0 0 0-1h-2v-2z"/>
+					</svg>
+					<div class="flex items-center">{$i18n.t('Insert Messages')}</div>
+				</DropdownMenu.Item>
+
 				<hr class="border-gray-50 dark:border-gray-800 my-1" />
 
 				<div class="flex p-1">
@@ -481,3 +541,10 @@
 		</DropdownMenu.Content>
 	</div>
 </Dropdown>
+
+<BulkMessageModal 
+	bind:show={showBulkModal}
+	on:submit={({ detail }) => {
+		createMessageSequence(detail.messages);
+	}}
+/>

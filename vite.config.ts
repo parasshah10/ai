@@ -28,5 +28,42 @@ export default defineConfig({
 	},
 	esbuild: {
 		pure: process.env.ENV === 'dev' ? [] : ['console.log', 'console.debug', 'console.error']
-	}
+	},
+	server: {
+		port: 3000,
+		host: '0.0.0.0',
+		proxy: {
+		  '/api': {
+			target: 'http://localhost:8080',
+			changeOrigin: true,
+			configure: (proxy) => {
+			  proxy.on('error', (err) => {
+				console.log('proxy error', err);
+			  });
+			}
+		  },
+		  '/ollama': {
+			target: 'http://localhost:8080',
+			changeOrigin: true
+		  },
+		  '/openai': {
+			target: 'http://localhost:8080',
+			changeOrigin: true
+		  },
+		  '/health': {  // ADD THIS!
+			target: 'http://localhost:8080',
+			changeOrigin: true
+		  },
+		  '/docs': {    // ADD THIS TOO (for API docs)
+			target: 'http://localhost:8080',
+			changeOrigin: true
+		  },
+		  '/ws': {
+			target: 'http://localhost:8080',
+			ws: true,
+			changeOrigin: true
+		  }
+		}
+	  }
+	
 });

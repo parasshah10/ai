@@ -775,7 +775,9 @@
 
 				htmlValue = editor.getHTML();
 				jsonValue = editor.getJSON();
-
+				
+				// Only process markdown conversion when richText is enabled
+				// This dramatically improves performance when rich text features are disabled
 				if (richText) {
 					mdValue = turndownService
 						.turndown(
@@ -785,18 +787,9 @@
 						)
 						.replace(/\u00a0/g, ' ');
 				} else {
-					mdValue = turndownService
-						.turndown(
-							htmlValue
-								// Replace empty paragraphs with line breaks
-								.replace(/<p><\/p>/g, '<br/>')
-								// Replace multiple spaces with non-breaking spaces
-								.replace(/ {2,}/g, (m) => m.replace(/ /g, '\u00a0'))
-								// Replace tabs with non-breaking spaces (preserve indentation)
-								.replace(/\t/g, '\u00a0\u00a0\u00a0\u00a0') // 1 tab = 4 spaces
-						)
-						// Convert non-breaking spaces back to regular spaces for markdown
-						.replace(/\u00a0/g, ' ');
+					// When richText is false, extract plain text content directly
+					// This is much faster than processing through turndownService
+					mdValue = editor.getText();
 				}
 
 				onChange({
@@ -1097,14 +1090,22 @@
 
 		const jsonValue = editor.getJSON();
 		const htmlValue = editor.getHTML();
-		let mdValue = turndownService
-			.turndown(
-				(preserveBreaks ? htmlValue.replace(/<p><\/p>/g, '<br/>') : htmlValue).replace(
-					/ {2,}/g,
-					(m) => m.replace(/ /g, '\u00a0')
+		
+		// Only process markdown conversion when richText is enabled
+		let mdValue;
+		if (richText) {
+			mdValue = turndownService
+				.turndown(
+					(preserveBreaks ? htmlValue.replace(/<p><\/p>/g, '<br/>') : htmlValue).replace(
+						/ {2,}/g,
+						(m) => m.replace(/ /g, '\u00a0')
+					)
 				)
-			)
-			.replace(/\u00a0/g, ' ');
+				.replace(/\u00a0/g, ' ');
+		} else {
+			// When richText is false, extract plain text content directly
+			mdValue = editor.getText();
+		}
 
 		if (value === '') {
 			editor.commands.clearContent(); // Clear content if value is empty

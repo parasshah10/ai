@@ -367,6 +367,16 @@
 	let maxVisibleItems = 300;
 	$: maxVisibleItems = Math.floor(containerWidth / 5); // 2px width + 0.5px gap
 
+	const handleKeyDown = (event) => {
+		const isCtrlPressed = event.ctrlKey || event.metaKey; // metaKey is for Cmd key on Mac
+		
+		// Use same shortcut (Ctrl/Cmd + E) to confirm recording
+		if (recording && !loading && isCtrlPressed && event.key.toLowerCase() === 'e') {
+			event.preventDefault();
+			confirmRecording();
+		}
+	};
+
 	onMount(() => {
 		// listen to width changes
 		resizeObserver = new ResizeObserver(() => {
@@ -381,11 +391,13 @@
 		});
 
 		resizeObserver.observe(document.body);
+		window.addEventListener('keydown', handleKeyDown);
 	});
 
 	onDestroy(() => {
 		// remove resize observer
 		resizeObserver.disconnect();
+		window.removeEventListener('keydown', handleKeyDown);
 	});
 </script>
 

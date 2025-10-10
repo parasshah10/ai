@@ -1896,9 +1896,7 @@
 				background_tasks: {
 					...(!$temporaryChatEnabled &&
 					(messages.length == 1 ||
-						(messages.length == 2 &&
-							messages.at(0)?.role === 'system' &&
-							messages.at(1)?.role === 'user')) &&
+						(messages.length >= 1)) &&
 					(selectedModels[0] === model.id || atSelectedModel !== undefined)
 						? {
 								title_generation: $settings?.title?.auto ?? true,
@@ -2278,6 +2276,13 @@
 			toast.error($i18n.t('Failed to move chat'));
 		}
 	};
+
+	const createMessageSequence = async (messages) => {
+		const modelId = selectedModels[0];
+		const parentId = history.currentId;
+
+		await addMessages({ modelId, parentId, messages });
+	};
 </script>
 
 <svelte:head>
@@ -2364,6 +2369,7 @@
 						{initNewChat}
 						archiveChatHandler={() => {}}
 						{moveChatHandler}
+						{createMessageSequence}
 						onSaveTempChat={async () => {
 							try {
 								if (!history?.currentId || !Object.keys(history.messages).length) {

@@ -46,6 +46,7 @@
 	import { deleteFileById } from '$lib/apis/files';
 	import { getSessionUser } from '$lib/apis/auths';
 	import { getTools } from '$lib/apis/tools';
+	import { uploadImageToCloudinary } from '$lib/apis';
 
 	import { WEBUI_BASE_URL, WEBUI_API_BASE_URL, PASTED_TEXT_CHARACTER_LIMIT } from '$lib/constants';
 
@@ -666,58 +667,24 @@
 					toast.error($i18n.t('Selected model(s) do not support image inputs'));
 					return;
 				}
-
-				const compressImageHandler = async (imageUrl, settings = {}, config = {}) => {
-					// Quick shortcut so we don’t do unnecessary work.
-					const settingsCompression = settings?.imageCompression ?? false;
-					const configWidth = config?.file?.image_compression?.width ?? null;
-					const configHeight = config?.file?.image_compression?.height ?? null;
-
-					// If neither settings nor config wants compression, return original URL.
-					if (!settingsCompression && !configWidth && !configHeight) {
-						return imageUrl;
-					}
-
-					// Default to null (no compression unless set)
-					let width = null;
-					let height = null;
-
-					// If user/settings want compression, pick their preferred size.
-					if (settingsCompression) {
-						width = settings?.imageCompressionSize?.width ?? null;
-						height = settings?.imageCompressionSize?.height ?? null;
-					}
-
-					// Apply config limits as an upper bound if any
-					if (configWidth && (width === null || width > configWidth)) {
-						width = configWidth;
-					}
-					if (configHeight && (height === null || height > configHeight)) {
-						height = configHeight;
-					}
-
-					// Do the compression if required
-					if (width || height) {
-						return await compressImage(imageUrl, width, height);
-					}
-					return imageUrl;
-				};
-
-				let reader = new FileReader();
-				reader.onload = async (event) => {
-					let imageUrl = event.target.result;
-
-					imageUrl = await compressImageHandler(imageUrl, $settings, $config);
-
-					files = [
-						...files,
-						{
-							type: 'image',
-							url: `${imageUrl}`
+				(async () => {
+					try {
+						// Upload to Cloudinary
+						const uploadedImage = await uploadImageToCloudinary(localStorage.token, file);
+						
+						if (uploadedImage) {
+							files = [
+								...files,
+								{
+									type: 'image',
+									url: uploadedImage.url
+								}
+							];
 						}
-					];
-				};
-				reader.readAsDataURL(file['type'] === 'image/heic' ? await convertHeicToJpeg(file) : file);
+					} catch (error) {
+						toast.error('Failed to upload image');
+					}
+				})();
 			} else {
 				uploadFileHandler(file);
 			}
@@ -1247,11 +1214,17 @@
 																stopResponse();
 															}
 
-															// Command/Ctrl + Shift + Enter to submit a message pair
-															if (isCtrlPressed && e.key === 'Enter' && e.shiftKey) {
-																e.preventDefault();
-																createMessagePair(prompt);
-															}
+													// Command/Ctrl + Shift + Enter to submit a message pair
+													if (isCtrlPressed && e.key === 'Enter' && e.shiftKey) {
+														e.preventDefault();
+														createMessagePair(prompt);
+													}
+
+													    // Ctrl/Cmd + E to start voice recording
+													if (isCtrlPressed && e.key.toLowerCase() === 'e') {
+														e.preventDefault();
+														document.getElementById('voice-input-button')?.click();
+													}
 
 															// Check if Ctrl + R is pressed
 															if (prompt === '' && isCtrlPressed && e.key.toLowerCase() === 'r') {
@@ -1330,33 +1303,29 @@
 
 															const clipboardData = e.clipboardData || window.clipboardData;
 
-															if (clipboardData && clipboardData.items) {
-																for (const item of clipboardData.items) {
-																	if (item.type.indexOf('image') !== -1) {
-																		const blob = item.getAsFile();
-																		const reader = new FileReader();
-
-																		reader.onload = function (e) {
-																			files = [
-																				...files,
-																				{
-																					type: 'image',
-																					url: `${e.target.result}`
-																				}
-																			];
-																		};
-
-																		reader.readAsDataURL(blob);
-																	} else if (item?.kind === 'file') {
-																		const file = item.getAsFile();
-																		if (file) {
-																			const _files = [file];
-																			await inputFilesHandler(_files);
-																			e.preventDefault();
+													if (clipboardData && clipboardData.items) {
+														for (const item of clipboardData.items) {
+															if (item.type.indexOf('image') !== -1) {
+																const blob = item.getAsFile();
+																try {
+                															// Upload to Cloudinary
+																			const uploadedImage = await uploadImageToCloudinary(localStorage.token, blob);
+																			
+																			if (uploadedImage) {
+																				files = [
+																					...files,
+																					{
+																						type: 'image',
+																						url: uploadedImage.url
+																					}
+																				];
+																			}
+																		} catch (error) {
+																			toast.error('Failed to upload image');
 																		}
-																	} else if (item.type === 'text/plain') {
-																		if (($settings?.largeTextAsFile ?? false) && !shiftKey) {
-																			const text = clipboardData.getData('text/plain');
+															} else if (item.type === 'text/plain') {
+																if (($settings?.largeTextAsFile ?? false) && !shiftKey) {
+																	const text = clipboardData.getData('text/plain');
 
 																			if (text.length > PASTED_TEXT_CHARACTER_LIMIT) {
 																				e.preventDefault();
