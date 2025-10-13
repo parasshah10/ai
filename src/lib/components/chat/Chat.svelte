@@ -108,6 +108,7 @@
 	let autoScroll = true;
 	let processing = '';
 	let messagesContainerElement: HTMLDivElement;
+	let messagesComponent;
 
 	let navbarElement;
 
@@ -2424,6 +2425,7 @@
 							>
 								<div class=" h-full w-full flex flex-col">
 									<Messages
+										bind:this={messagesComponent}
 										chatId={$chatId}
 										bind:history
 										bind:autoScroll
@@ -2449,9 +2451,9 @@
 							</div>
 							
 							<!-- Chat Minimap (desktop) -->
-							<ChatMinimap {history} {messagesContainerElement} />
+							<ChatMinimap {history} {messagesContainerElement} {messagesComponent} />
 							<!-- Chat Minimap (mobile) -->
-							<ChatMinimapMobile {history} {messagesContainerElement} />
+							<ChatMinimapMobile {history} {messagesContainerElement} {messagesComponent} />
 
 							<div class=" pb-2">
 								<MessageInput

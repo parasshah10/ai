@@ -2,11 +2,12 @@
   import { onMount, onDestroy, tick } from 'svelte';
 
   export let history: {
-    messages: Record<string, any>;
-    currentId: string | null;
+  	messages: Record<string, any>;
+  	currentId: string | null;
   };
   export let messagesContainerElement: HTMLDivElement | null = null;
-
+  export let messagesComponent: any = null;
+ 
   // UI state
   let open = false;
 
@@ -203,37 +204,49 @@
     }
   }
 
-  function scrollToMessage(messageId: string) {
-    const element = document.getElementById(`message-${messageId}`);
-    if (element && messagesContainerElement) {
-      const containerRect = messagesContainerElement.getBoundingClientRect();
-      const elementRect = element.getBoundingClientRect();
-
-      const m = messages.find((mm) => mm.id === messageId);
-      const offset = getTopOffsetForMessage(m);
-
-      const delta = elementRect.top - containerRect.top - offset;
-
-      // Immediate visual feedback - set active marker before scrolling
-      activeMessageId = messageId;
-
-      // Suppress tripwire updates during smooth scroll for instant feedback
-      suppressTripwireUpdate = true;
-      if (tripwireSuppressionTimeout) {
-        clearTimeout(tripwireSuppressionTimeout);
-      }
-
-      messagesContainerElement.scrollTo({
-        top: messagesContainerElement.scrollTop + delta,
-        behavior: 'smooth'
-      });
-
-      // Re-enable tripwire after smooth scroll completes (~800ms)
-      tripwireSuppressionTimeout = setTimeout(() => {
-        suppressTripwireUpdate = false;
-        tripwireSuppressionTimeout = null;
-      }, 800);
-    }
+  async function scrollToMessage(messageId: string) {
+  	const messageIndex = messages.findIndex((m) => m.id === messageId);
+  	if (messageIndex === -1) return;
+ 
+  	let element = document.getElementById(`message-${messageId}`);
+  	
+  	// If element doesn't exist, load required messages
+  	if (!element && messagesComponent) {
+  		const requiredCount = messages.length - messageIndex + 5;
+  		await messagesComponent.loadMessagesToCount(requiredCount);
+  		await tick();
+  		element = document.getElementById(`message-${messageId}`);
+  	}
+ 
+  	if (element && messagesContainerElement) {
+  		const containerRect = messagesContainerElement.getBoundingClientRect();
+  		const elementRect = element.getBoundingClientRect();
+ 
+  		const m = messages.find((mm) => mm.id === messageId);
+  		const offset = getTopOffsetForMessage(m);
+ 
+  		const delta = elementRect.top - containerRect.top - offset;
+ 
+  		// Immediate visual feedback - set active marker before scrolling
+  		activeMessageId = messageId;
+ 
+  		// Suppress tripwire updates during smooth scroll for instant feedback
+  		suppressTripwireUpdate = true;
+  		if (tripwireSuppressionTimeout) {
+  			clearTimeout(tripwireSuppressionTimeout);
+  		}
+ 
+  		messagesContainerElement.scrollTo({
+  			top: messagesContainerElement.scrollTop + delta,
+  			behavior: 'smooth'
+  		});
+ 
+  		// Re-enable tripwire after smooth scroll completes (~800ms)
+  		tripwireSuppressionTimeout = setTimeout(() => {
+  			suppressTripwireUpdate = false;
+  			tripwireSuppressionTimeout = null;
+  		}, 800);
+  	}
   }
 
   function navigatePrevious() {

@@ -9,6 +9,7 @@
 		currentId: string | null;
 	};
 	export let messagesContainerElement: HTMLDivElement | null = null;
+	export let messagesComponent: any = null;
 
 	let activeMessageId: string | null = null;
 	let hoveredMessageId: string | null = null;
@@ -199,8 +200,20 @@
 		}
 	}
 
-	function scrollToMessage(messageId: string) {
-		const element = document.getElementById(`message-${messageId}`);
+	async function scrollToMessage(messageId: string) {
+		const messageIndex = messages.findIndex((m) => m.id === messageId);
+		if (messageIndex === -1) return;
+
+		let element = document.getElementById(`message-${messageId}`);
+		
+		// If element doesn't exist, load required messages
+		if (!element && messagesComponent) {
+			const requiredCount = messages.length - messageIndex + 5;
+			await messagesComponent.loadMessagesToCount(requiredCount);
+			await tick();
+			element = document.getElementById(`message-${messageId}`);
+		}
+
 		if (element && messagesContainerElement) {
 			const containerRect = messagesContainerElement.getBoundingClientRect();
 			const elementRect = element.getBoundingClientRect();
