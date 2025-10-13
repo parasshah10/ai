@@ -92,6 +92,8 @@
 	import { getFunctions } from '$lib/apis/functions';
 	import Image from '../common/Image.svelte';
 	import { updateFolderById } from '$lib/apis/folders';
+	import ChatMinimap from './ChatMinimap.svelte';
+	import ChatMinimapMobile from './ChatMinimapMobile.svelte';
 
 	export let chatIdProp = '';
 
@@ -2408,7 +2410,7 @@
 						}}
 					/>
 
-					<div class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
+					<div class="flex flex-col flex-auto z-10 w-full @container overflow-auto relative">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
@@ -2445,6 +2447,11 @@
 									/>
 								</div>
 							</div>
+							
+							<!-- Chat Minimap (desktop) -->
+							<ChatMinimap {history} {messagesContainerElement} />
+							<!-- Chat Minimap (mobile) -->
+							<ChatMinimapMobile {history} {messagesContainerElement} />
 
 							<div class=" pb-2">
 								<MessageInput
