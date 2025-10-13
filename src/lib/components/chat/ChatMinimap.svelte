@@ -16,6 +16,13 @@
 	let messages: any[] = [];
 	let onScroll: (() => void) | null = null;
 
+	// Flag to suppress tripwire updates during programmatic scrolls for instant feedback
+	let suppressTripwireUpdate = false;
+	let tripwireSuppressionTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	// Markers container for scrollable overflow
+	let markersContainerElement: HTMLDivElement | null = null;
+
 	// Per-role top offsets to clear the navbar gradient/fade area
 	const AI_TOP_OFFSET = 40;
 	const USER_TOP_OFFSET = 25;
@@ -54,6 +61,11 @@
 		if (observer) {
 			tick().then(() => updateObserver());
 		}
+	}
+
+	// Auto-center active marker in minimap when it changes
+	$: if (activeMessageId && markersContainerElement) {
+		centerActiveMarkerInMinimap();
 	}
 
 	onMount(() => {
@@ -131,6 +143,9 @@
 	// Active = the last message whose top has crossed the container top (closest to the top).
 	function updateActiveByTripwire() {
 		if (!messagesContainerElement) return;
+		
+		// Skip updates during programmatic scrolls for instant feedback
+		if (suppressTripwireUpdate) return;
 
 		const containerTop = messagesContainerElement.getBoundingClientRect().top;
 		let chosenId: string | null = null;
@@ -161,6 +176,29 @@
 		}
 	}
 
+	// Center the active marker in the minimap's scrollable container
+	function centerActiveMarkerInMinimap() {
+		if (!markersContainerElement || !activeMessageId) return;
+
+		const activeButton = markersContainerElement.querySelector(
+			`[data-marker-id="${activeMessageId}"]`
+		) as HTMLElement;
+
+		if (activeButton) {
+			const containerHeight = markersContainerElement.clientHeight;
+			const buttonTop = activeButton.offsetTop;
+			const buttonHeight = activeButton.offsetHeight;
+
+			// Scroll to center the active marker
+			const scrollTo = buttonTop - containerHeight / 2 + buttonHeight / 2;
+
+			markersContainerElement.scrollTo({
+				top: scrollTo,
+				behavior: 'smooth'
+			});
+		}
+	}
+
 	function scrollToMessage(messageId: string) {
 		const element = document.getElementById(`message-${messageId}`);
 		if (element && messagesContainerElement) {
@@ -172,13 +210,25 @@
 			const offset = getTopOffsetForMessage(m);
 			const delta = elementRect.top - containerRect.top - offset;
 
-			// Immediate visual feedback
+			// Immediate visual feedback - set active marker before scrolling
 			activeMessageId = messageId;
+
+			// Suppress tripwire updates during smooth scroll for instant feedback
+			suppressTripwireUpdate = true;
+			if (tripwireSuppressionTimeout) {
+				clearTimeout(tripwireSuppressionTimeout);
+			}
 
 			messagesContainerElement.scrollTo({
 				top: messagesContainerElement.scrollTop + delta,
 				behavior: 'smooth'
 			});
+
+			// Re-enable tripwire after smooth scroll completes (~800ms)
+			tripwireSuppressionTimeout = setTimeout(() => {
+				suppressTripwireUpdate = false;
+				tripwireSuppressionTimeout = null;
+			}, 800);
 		}
 	}
 
@@ -211,7 +261,7 @@
 		// Remove any <details> blocks (e.g., reasoning, tool_calls) before generating preview
 		const stripped = removeAllDetails(content);
 		const text = stripped.replace(/<[^>]*>/g, '').trim();
-		return text.length > 50 ? text.substring(0, 50) + '...' : text;
+		return text.length > 160 ? text.substring(0, 160) + '...' : text;
 	}
 
 	onDestroy(() => {
@@ -222,6 +272,9 @@
 		window.removeEventListener('resize', updateMinimapTop);
 		resizeObserver?.disconnect();
 		observer?.disconnect();
+		if (tripwireSuppressionTimeout) {
+			clearTimeout(tripwireSuppressionTimeout);
+		}
 	});
 </script>
 
@@ -254,8 +307,12 @@
 			</svg>
 		</button>
 
-		<!-- Markers -->
-		<div class="relative flex flex-col items-center gap-2 py-1">
+		<!-- Markers (scrollable with max-height and fade indicators) -->
+		<div
+			bind:this={markersContainerElement}
+			class="relative flex flex-col items-center gap-0.5 py-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent"
+			style="max-height: min(60vh, 500px); mask-image: linear-gradient(to bottom, transparent 0%, black 8px, black calc(100% - 8px), transparent 100%);"
+		>
 			{#each messages as message (message.id)}
 				{@const isUser = message.role === 'user'}
 				{@const isActive = message.id === activeMessageId}
@@ -267,16 +324,19 @@
 						? 'bg-gray-500 dark:bg-gray-500'
 						: 'bg-gray-400 dark:bg-gray-400'}
 
-				<Tooltip content="{isUser ? 'You' : 'AI'}<br/>{getPreviewText(message.content)}" placement="left">
+				<Tooltip content="<span style='font-weight:600;font-size:0.8125rem'>{isUser ? 'You' : 'AI'}</span><br/>{getPreviewText(message.content)}" placement="left">
 					<button
 						type="button"
-						class="rounded-full transition-all duration-200 cursor-pointer {markerClasses} {colorClasses}"
+						class="min-w-[1.5rem] p-1 rounded-md transition-all duration-200 cursor-pointer hover:bg-gray-100/20 dark:hover:bg-gray-800/20 flex items-center justify-center"
+						data-marker-id={message.id}
 						on:click={() => scrollToMessage(message.id)}
 						on:mouseenter={() => (hoveredMessageId = message.id)}
 						on:mouseleave={() => (hoveredMessageId = null)}
 						aria-label="Navigate to {isUser ? 'user' : 'AI'} message"
 						aria-current={isActive}
-					/>
+					>
+						<div class="rounded-full {markerClasses} {colorClasses}"></div>
+					</button>
 				</Tooltip>
 			{/each}
 		</div>
