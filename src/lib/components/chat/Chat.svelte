@@ -222,6 +222,10 @@
 		saveSessionSelectedModels();
 	}
 
+	$: if (selectedToolIds && chatIdProp) {
+		saveSessionSelectedTools();
+	}
+
 	const saveSessionSelectedModels = () => {
 		const selectedModelsString = JSON.stringify(selectedModels);
 		if (
@@ -235,26 +239,35 @@
 		console.log('saveSessionSelectedModels', selectedModels, sessionStorage.selectedModels);
 	};
 
+	const saveSessionSelectedTools = () => {
+		const selectedToolsString = JSON.stringify(selectedToolIds);
+		if (sessionStorage.selectedToolIds === selectedToolsString) {
+			return;
+		}
+		sessionStorage.selectedToolIds = selectedToolsString;
+		console.log('saveSessionSelectedTools', selectedToolIds, sessionStorage.selectedToolIds);
+	};
+
 	let oldSelectedModelIds = [''];
 	$: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds)) {
 		onSelectedModelIdsChange();
 	}
 
-	const onSelectedModelIdsChange = () => {
+	const onSelectedModelIdsChange = async () => {
 		if (oldSelectedModelIds.filter((id) => id).length > 0) {
-			resetInput();
+			await resetInput();
 		}
 		oldSelectedModelIds = selectedModelIds;
 	};
 
-	const resetInput = () => {
+	const resetInput = async () => {
 		selectedToolIds = [];
 		selectedFilterIds = [];
 		webSearchEnabled = false;
-		imageGenerationEnabled = false;
+imageGenerationEnabled = false;
 		codeInterpreterEnabled = false;
 
-		setDefaults();
+		await setDefaults();
 	};
 
 	const setDefaults = async () => {
@@ -914,7 +927,21 @@
 
 		autoScroll = true;
 
-		resetInput();
+		await resetInput();
+
+		if (selectedToolIds.length === 0 && sessionStorage.selectedToolIds) {
+			try {
+				const sessionTools = JSON.parse(sessionStorage.selectedToolIds);
+				if (Array.isArray(sessionTools)) {
+					selectedToolIds = sessionTools;
+				}
+			} catch (e) {
+				console.error('Failed to parse selectedToolIds from sessionStorage', e);
+			} finally {
+				sessionStorage.removeItem('selectedToolIds');
+			}
+		}
+
 		await chatId.set('');
 		await chatTitle.set('');
 
