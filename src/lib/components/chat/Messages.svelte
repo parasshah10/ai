@@ -73,6 +73,17 @@
 		messagesLoading = false;
 	};
 
+	// Expose function to load messages to a specific count (used by minimap)
+	export const loadMessagesToCount = async (count: number) => {
+		if (messagesCount === null || count <= messagesCount) {
+			return;
+		}
+		messagesLoading = true;
+		messagesCount = count;
+		await tick();
+		messagesLoading = false;
+	};
+
 	$: if (history.currentId) {
 		let _messages = [];
 

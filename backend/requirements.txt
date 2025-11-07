@@ -58,6 +58,7 @@ pyarrow==20.0.0 # fix: pin pyarrow version to 20 for rpi compatibility #15897
 einops==0.8.1 
 
 ftfy==6.2.3
+cloudinary==1.41.0
 pypdf==6.0.0
 fpdf2==2.8.2
 pymdown-extensions==10.14.2
@@ -85,7 +86,7 @@ rank-bm25==0.2.2
 onnxruntime==1.20.1
 faster-whisper==1.1.1
 
-
+pillow-heif==0.21.0
 black==25.9.0
 youtube-transcript-api==1.2.2
 pytube==15.0.0

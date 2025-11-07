@@ -349,6 +349,7 @@
 							{#if message.content}
 								<Markdown
 									id={`${chatId}-${message.id}`}
+									role={message.role}
 									content={message.content}
 									{editCodeBlock}
 									{topPadding}

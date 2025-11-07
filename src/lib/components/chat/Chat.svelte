@@ -96,6 +96,9 @@
 	import Tooltip from '../common/Tooltip.svelte';
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
+	import { updateFolderById } from '$lib/apis/folders';
+	import ChatMinimap from './ChatMinimap.svelte';
+	import ChatMinimapMobile from './ChatMinimapMobile.svelte';
 
 	export let chatIdProp = '';
 
@@ -110,6 +113,7 @@
 	let autoScroll = true;
 	let processing = '';
 	let messagesContainerElement: HTMLDivElement;
+	let messagesComponent;
 
 	let navbarElement;
 
@@ -225,6 +229,10 @@
 		saveSessionSelectedModels();
 	}
 
+	$: if (selectedToolIds && chatIdProp) {
+		saveSessionSelectedTools();
+	}
+
 	const saveSessionSelectedModels = () => {
 		const selectedModelsString = JSON.stringify(selectedModels);
 		if (
@@ -238,26 +246,35 @@
 		console.log('saveSessionSelectedModels', selectedModels, sessionStorage.selectedModels);
 	};
 
+	const saveSessionSelectedTools = () => {
+		const selectedToolsString = JSON.stringify(selectedToolIds);
+		if (sessionStorage.selectedToolIds === selectedToolsString) {
+			return;
+		}
+		sessionStorage.selectedToolIds = selectedToolsString;
+		console.log('saveSessionSelectedTools', selectedToolIds, sessionStorage.selectedToolIds);
+	};
+
 	let oldSelectedModelIds = [''];
 	$: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds)) {
 		onSelectedModelIdsChange();
 	}
 
-	const onSelectedModelIdsChange = () => {
+	const onSelectedModelIdsChange = async () => {
 		if (oldSelectedModelIds.filter((id) => id).length > 0) {
-			resetInput();
+			await resetInput();
 		}
 		oldSelectedModelIds = selectedModelIds;
 	};
 
-	const resetInput = () => {
+	const resetInput = async () => {
 		selectedToolIds = [];
 		selectedFilterIds = [];
 		webSearchEnabled = false;
-		imageGenerationEnabled = false;
+imageGenerationEnabled = false;
 		codeInterpreterEnabled = false;
 
-		setDefaults();
+		await setDefaults();
 	};
 
 	const setDefaults = async () => {
@@ -986,7 +1003,21 @@
 
 		autoScroll = true;
 
-		resetInput();
+		await resetInput();
+
+		if (selectedToolIds.length === 0 && sessionStorage.selectedToolIds) {
+			try {
+				const sessionTools = JSON.parse(sessionStorage.selectedToolIds);
+				if (Array.isArray(sessionTools)) {
+					selectedToolIds = sessionTools;
+				}
+			} catch (e) {
+				console.error('Failed to parse selectedToolIds from sessionStorage', e);
+			} finally {
+				sessionStorage.removeItem('selectedToolIds');
+			}
+		}
+
 		await chatId.set('');
 		await chatTitle.set('');
 
@@ -1971,9 +2002,7 @@
 				background_tasks: {
 					...(!$temporaryChatEnabled &&
 					(messages.length == 1 ||
-						(messages.length == 2 &&
-							messages.at(0)?.role === 'system' &&
-							messages.at(1)?.role === 'user')) &&
+						(messages.length >= 1)) &&
 					(selectedModels[0] === model.id || atSelectedModel !== undefined)
 						? {
 								title_generation: $settings?.title?.auto ?? true,
@@ -2353,6 +2382,13 @@
 			toast.error($i18n.t('Failed to move chat'));
 		}
 	};
+
+	const createMessageSequence = async (messages) => {
+		const modelId = selectedModels[0];
+		const parentId = history.currentId;
+
+		await addMessages({ modelId, parentId, messages });
+	};
 </script>
 
 <svelte:head>
@@ -2439,6 +2475,7 @@
 						{initNewChat}
 						archiveChatHandler={() => {}}
 						{moveChatHandler}
+						{createMessageSequence}
 						onSaveTempChat={async () => {
 							try {
 								if (!history?.currentId || !Object.keys(history.messages).length) {
@@ -2477,7 +2514,7 @@
 						}}
 					/>
 
-					<div class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
+					<div class="flex flex-col flex-auto z-10 w-full @container overflow-auto relative">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
@@ -2491,6 +2528,7 @@
 							>
 								<div class=" h-full w-full flex flex-col">
 									<Messages
+										bind:this={messagesComponent}
 										chatId={$chatId}
 										bind:history
 										bind:autoScroll
@@ -2514,6 +2552,11 @@
 									/>
 								</div>
 							</div>
+							
+							<!-- Chat Minimap (desktop) -->
+							<ChatMinimap {history} {messagesContainerElement} {messagesComponent} />
+							<!-- Chat Minimap (mobile) -->
+							<ChatMinimapMobile {history} {messagesContainerElement} {messagesComponent} />
 
 							<div class=" pb-2 z-10">
 								<MessageInput

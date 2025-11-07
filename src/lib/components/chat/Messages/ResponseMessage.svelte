@@ -729,6 +729,7 @@
 									<ContentRenderer
 										id={`${chatId}-${message.id}`}
 										messageId={message.id}
+										role={message.role}
 										{history}
 										{selectedModels}
 										content={message.content}

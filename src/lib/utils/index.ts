@@ -32,31 +32,35 @@ function escapeRegExp(string: string): string {
 	return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export const replaceTokens = (content, sourceIds, char, user) => {
+export const replaceTokens = (content: string, sourceIds: any[], char: string, user: string) => {
 	const tokens = [
 		{ regex: /{{char}}/gi, replacement: char },
 		{ regex: /{{user}}/gi, replacement: user },
 		{
 			regex: /{{VIDEO_FILE_ID_([a-f0-9-]+)}}/gi,
-			replacement: (_, fileId) =>
+			replacement: (_, fileId: string) =>
 				`<video src="${WEBUI_BASE_URL}/api/v1/files/${fileId}/content" controls></video>`
 		},
 		{
 			regex: /{{HTML_FILE_ID_([a-f0-9-]+)}}/gi,
-			replacement: (_, fileId) => `<file type="html" id="${fileId}" />`
+			replacement: (_, fileId: string) => `<file type="html" id="${fileId}" />`
 		}
 	];
 
 	// Replace tokens outside code blocks only
-	const processOutsideCodeBlocks = (text, replacementFn) => {
-		return text
+	const processOutsideCodeBlocks = (text: string, replacementFn: (s: string) => string) => {
+		const startTime = performance.now();
+		const result = text
 			.split(/(```[\s\S]*?```|`[\s\S]*?`)/)
-			.map((segment) => {
+			.map((segment: string) => {
 				return segment.startsWith('```') || segment.startsWith('`')
 					? segment
 					: replacementFn(segment);
 			})
 			.join('');
+		const endTime = performance.now();
+		console.log(`processOutsideCodeBlocks took ${endTime - startTime} milliseconds`);
+		return result;
 	};
 
 	// Apply replacements
@@ -109,7 +113,10 @@ export const sanitizeResponseContent = (content: string) => {
 };
 
 export const processResponseContent = (content: string) => {
+	const startTime = performance.now();
 	content = processChineseContent(content);
+	const endTime = performance.now();
+	console.log(`processChineseContent (called by processResponseContent) took ${endTime - startTime} milliseconds`);
 	return content.trim();
 };
 
@@ -511,7 +518,7 @@ export const copyToClipboard = async (text, html = null, formatted = false) => {
 				const successful = document.execCommand('copy');
 				const msg = successful ? 'successful' : 'unsuccessful';
 				console.log('Fallback: Copying text command was ' + msg);
-				result = true;
+				result = successful;
 			} catch (err) {
 				console.error('Fallback: Oops, unable to copy', err);
 			}
