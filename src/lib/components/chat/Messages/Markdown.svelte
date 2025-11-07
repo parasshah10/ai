@@ -127,15 +127,16 @@
 		console.log(`[MARKDOWN] Phase 2: Parser Selection & Execution`);
 		console.log(`[MARKDOWN] ─────────────────────────────────────────────────────`);
 
+		// To re-enable markdown rendering for user messages, remove the "if (role === 'user')" block
+		// below and uncomment the original parser selection logic that has been commented out.
+		/*
 		if (USE_UNIFIED_PARSER && role === 'user') {
 			console.log(`[MARKDOWN] Strategy: UNIFIED parser (user message with hybrid optimization)`);
 			console.log(`[MARKDOWN] This is the same parser family LibreChat uses (remark-parse)`);
-
 			const unifiedStart = performance.now();
 			const useHybrid = role === 'user';
 			const unifiedResult = parseMarkdownToTokens(contentWithReplacedTokens, id, useHybrid);
 			const unifiedEnd = performance.now();
-
 			if (unifiedResult.success) {
 				tokens = unifiedResult.tokens;
 				parserUsed = 'unified (remark-parse)';
@@ -143,7 +144,6 @@
 					...unifiedResult.metrics,
 					totalWallTime: unifiedEnd - unifiedStart
 				};
-
 				console.log(`[MARKDOWN] ✓ UNIFIED parser succeeded`);
 				console.log(`[MARKDOWN] Wall clock time: ${parserMetrics.totalWallTime.toFixed(2)}ms`);
 				console.log(
@@ -158,6 +158,28 @@
 				fallbackUsed = true;
 			}
 		} else {
+			console.log(`[MARKDOWN] Strategy: MARKED parser (AI message)`);
+		}
+		*/
+
+		// Markdown rendering is disabled for user messages. The original content is rendered as plain text.
+		if (role === 'user') {
+			console.log('[MARKDOWN] Strategy: Markdown rendering DISABLED for user messages.');
+			parserUsed = 'disabled (user)';
+
+			// Create a simple token structure to render raw text.
+			tokens = [
+				{
+					type: 'paragraph',
+					raw: contentWithReplacedTokens,
+					text: contentWithReplacedTokens,
+					tokens: [{ type: 'text', raw: contentWithReplacedTokens, text: contentWithReplacedTokens }]
+				}
+			];
+		} else {
+			// For AI messages, proceed with the original 'marked' parser logic.
+			// The `parserUsed` variable remains 'unknown', so the code falls through to the
+			// 'marked' parser section below, which is the intended behavior.
 			console.log(`[MARKDOWN] Strategy: MARKED parser (AI message)`);
 		}
 
