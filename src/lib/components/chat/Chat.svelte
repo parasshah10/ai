@@ -52,6 +52,7 @@
 		createMessagesList,
 		getPromptVariables,
 		processDetails,
+		convertMessagesForAPI,
 		removeAllDetails,
 		getCodeBlockContents
 	} from '$lib/utils';
@@ -559,7 +560,7 @@ imageGenerationEnabled = false;
 					eventConfirmationTitle = data.title;
 					eventConfirmationMessage = data.message;
 					eventConfirmationInputPlaceholder = data.placeholder;
-					eventConfirmationInputValue = data?.value ?? '';
+					eventConfirmationInputValue = data?.value ?? '';;
 				} else {
 					console.log('Unknown message type', data);
 				}
@@ -1988,6 +1989,8 @@ imageGenerationEnabled = false;
 			params?.stream_response ??
 			true;
 
+		const apiReadyMessages = convertMessagesForAPI(_messages);
+
 		let messages = [
 			params?.system || $settings.system
 				? {
@@ -1995,38 +1998,46 @@ imageGenerationEnabled = false;
 						content: `${params?.system ?? $settings?.system ?? ''}`
 					}
 				: undefined,
-			..._messages.map((message) => ({
-				...message,
-				content: processDetails(message.content)
-			}))
+			...apiReadyMessages
 		].filter((message) => message);
 
 		messages = messages
-			.map((message, idx, arr) => ({
-				role: message.role,
-				...((message.files?.filter((file) => file.type === 'image').length > 0 ?? false) &&
-				message.role === 'user'
-					? {
-							content: [
-								{
-									type: 'text',
-									text: message?.merged?.content ?? message.content
-								},
-								...message.files
-									.filter((file) => file.type === 'image')
-									.map((file) => ({
-										type: 'image_url',
-										image_url: {
-											url: file.url
-										}
-									}))
-							]
-						}
-					: {
-							content: message?.merged?.content ?? message.content
-						})
-			}))
-			.filter((message) => message?.role === 'user' || message?.content?.trim());
+			.map((message) => {
+				// If it's a user message with images, format for vision
+				if (message.role === 'user' && (message.files?.some((f) => f.type === 'image') ?? false)) {
+					return {
+						role: 'user',
+						content: [
+							{
+								type: 'text',
+								text: message?.merged?.content ?? message.content
+							},
+							...message.files
+								.filter((file) => file.type === 'image')
+								.map((file) => ({
+									type: 'image_url',
+									image_url: { url: file.url }
+								}))
+						]
+					};
+				}
+				// Otherwise, return the message as is (it's already in API format)
+				return message;
+			})
+			.filter((message) => {
+				// Keep system messages
+				if (message.role === 'system') return true;
+				// Keep user messages (even with empty content, if they have images)
+				if (message.role === 'user') return true;
+				// Keep assistant messages that have tool calls
+				if (message.role === 'assistant' && message.tool_calls) return true;
+				// Keep assistant messages that have content
+				if (message.role === 'assistant' && message.content?.trim()) return true;
+				// Keep tool messages
+				if (message.role === 'tool') return true;
+				// Filter out anything else (e.g., assistant message with null content and no tool calls)
+				return false;
+			});
 
 		const toolIds = [];
 		const toolServerIds = [];
@@ -2045,12 +2056,30 @@ imageGenerationEnabled = false;
 			}
 		}
 
+		const openAIMessages = messages.map((message) => {
+			const cleanMessage = {
+				role: message.role,
+				content: message.content
+			};
+
+			if (message.tool_calls) {
+				cleanMessage.tool_calls = message.tool_calls;
+			}
+			if (message.tool_call_id) {
+				cleanMessage.tool_call_id = message.tool_call_id;
+			}
+			if (message.name) {
+				cleanMessage.name = message.name;
+			}
+			return cleanMessage;
+		});
+
 		const res = await generateOpenAIChatCompletion(
 			localStorage.token,
 			{
 				stream: stream,
 				model: model.id,
-				messages: messages,
+				messages: openAIMessages,
 				params: {
 					...$settings?.params,
 					...params,

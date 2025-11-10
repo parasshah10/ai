@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import sha256 from 'js-sha256';
+import { sha256 } from 'js-sha256';
 import { WEBUI_BASE_URL } from '$lib/constants';
 
 import dayjs from 'dayjs';
@@ -33,17 +33,20 @@ function escapeRegExp(string: string): string {
 }
 
 export const replaceTokens = (content: string, sourceIds: any[], char: string, user: string) => {
-	const tokens = [
+	const tokens: {
+		regex: RegExp;
+		replacement: string | ((substring: string, ...args: any[]) => string);
+	}[] = [
 		{ regex: /{{char}}/gi, replacement: char },
 		{ regex: /{{user}}/gi, replacement: user },
 		{
 			regex: /{{VIDEO_FILE_ID_([a-f0-9-]+)}}/gi,
-			replacement: (_, fileId: string) =>
+			replacement: (_: string, fileId: string) =>
 				`<video src="${WEBUI_BASE_URL}/api/v1/files/${fileId}/content" controls></video>`
 		},
 		{
 			regex: /{{HTML_FILE_ID_([a-f0-9-]+)}}/gi,
-			replacement: (_, fileId: string) => `<file type="html" id="${fileId}" />`
+			replacement: (_: string, fileId: string) => `<file type="html" id="${fileId}" />`
 		}
 	];
 
@@ -67,7 +70,7 @@ export const replaceTokens = (content: string, sourceIds: any[], char: string, u
 	content = processOutsideCodeBlocks(content, (segment) => {
 		tokens.forEach(({ regex, replacement }) => {
 			if (replacement !== undefined && replacement !== null) {
-				segment = segment.replace(regex, replacement);
+				segment = segment.replace(regex, replacement as string);
 			}
 		});
 
@@ -78,12 +81,12 @@ export const replaceTokens = (content: string, sourceIds: any[], char: string, u
 				// Extract numbers like 1,2,3
 				const indices = group
 					.split(',')
-					.map((n) => parseInt(n.trim(), 10))
-					.filter((n) => !isNaN(n));
+					.map((n: string) => parseInt(n.trim(), 10))
+					.filter((n: number) => !isNaN(n));
 
 				// Replace each index with a <source_id> tag
 				const sources = indices
-					.map((idx) => {
+					.map((idx: number) => {
 						const sourceId = sourceIds[idx - 1];
 						return sourceId
 							? `<source_id data="${idx}" title="${encodeURIComponent(sourceId)}" />`
@@ -195,11 +198,11 @@ export function unescapeHtml(html: string) {
 	return doc.documentElement.textContent;
 }
 
-export const capitalizeFirstLetter = (string) => {
+export const capitalizeFirstLetter = (string: string) => {
 	return string.charAt(0).toUpperCase() + string.slice(1);
 };
 
-export const splitStream = (splitOn) => {
+export const splitStream = (splitOn: string | RegExp) => {
 	let buffer = '';
 	return new TransformStream({
 		transform(chunk, controller) {
@@ -214,14 +217,17 @@ export const splitStream = (splitOn) => {
 	});
 };
 
-export const convertMessagesToHistory = (messages) => {
-	const history = {
+export const convertMessagesToHistory = (messages: any[]) => {
+	const history: {
+		messages: { [key: string]: any };
+		currentId: string | null;
+	} = {
 		messages: {},
 		currentId: null
 	};
 
-	let parentMessageId = null;
-	let messageId = null;
+	let parentMessageId: string | null = null;
+	let messageId: string | null = null;
 
 	for (const message of messages) {
 		messageId = uuidv4();
@@ -247,7 +253,7 @@ export const convertMessagesToHistory = (messages) => {
 	return history;
 };
 
-export const getGravatarURL = (email) => {
+export const getGravatarURL = (email: string) => {
 	// Trim leading and trailing whitespace from
 	// an email address and force all characters
 	// to lower case
@@ -265,43 +271,52 @@ export const canvasPixelTest = () => {
 	// Inspiration: https://github.com/kkapsner/CanvasBlocker/blob/master/test/detectionTest.js
 	const canvas = document.createElement('canvas');
 	const ctx = canvas.getContext('2d');
-	canvas.height = 1;
-	canvas.width = 1;
-	const imageData = new ImageData(canvas.width, canvas.height);
-	const pixelValues = imageData.data;
 
-	// Generate RGB test data
-	for (let i = 0; i < imageData.data.length; i += 1) {
-		if (i % 4 !== 3) {
-			pixelValues[i] = Math.floor(256 * Math.random());
-		} else {
-			pixelValues[i] = 255;
+	if (ctx) {
+		canvas.height = 1;
+		canvas.width = 1;
+		const imageData = new ImageData(canvas.width, canvas.height);
+		const pixelValues = imageData.data;
+
+		// Generate RGB test data
+		for (let i = 0; i < imageData.data.length; i += 1) {
+			if (i % 4 !== 3) {
+				pixelValues[i] = Math.floor(256 * Math.random());
+			} else {
+				pixelValues[i] = 255;
+			}
 		}
-	}
 
-	ctx.putImageData(imageData, 0, 0);
-	const p = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+		ctx.putImageData(imageData, 0, 0);
+		const p = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
 
-	// Read RGB data and fail if unmatched
-	for (let i = 0; i < p.length; i += 1) {
-		if (p[i] !== pixelValues[i]) {
-			console.log(
-				'canvasPixelTest: Wrong canvas pixel RGB value detected:',
-				p[i],
-				'at:',
-				i,
-				'expected:',
-				pixelValues[i]
-			);
-			console.log('canvasPixelTest: Canvas blocking or spoofing is likely');
-			return false;
+		// Read RGB data and fail if unmatched
+		for (let i = 0; i < p.length; i += 1) {
+			if (p[i] !== pixelValues[i]) {
+				console.log(
+					'canvasPixelTest: Wrong canvas pixel RGB value detected:',
+					p[i],
+					'at:',
+					i,
+					'expected:',
+					pixelValues[i]
+				);
+				console.log('canvasPixelTest: Canvas blocking or spoofing is likely');
+				return false;
+			}
 		}
-	}
 
-	return true;
+		return true;
+	} else {
+		return false;
+	}
 };
 
-export const compressImage = async (imageUrl, maxWidth, maxHeight) => {
+export const compressImage = async (
+	imageUrl: string,
+	maxWidth?: number,
+	maxHeight?: number
+): Promise<string> => {
 	return new Promise((resolve, reject) => {
 		const img = new Image();
 		img.onload = () => {
@@ -352,7 +367,9 @@ export const compressImage = async (imageUrl, maxWidth, maxHeight) => {
 			canvas.height = height;
 
 			const context = canvas.getContext('2d');
-			context.drawImage(img, 0, 0, width, height);
+			if (context) {
+				context.drawImage(img, 0, 0, width, height);
+			}
 
 			// Get compressed image URL
 			const mimeType = imageUrl.match(/^data:([^;]+);/)?.[1];
@@ -363,7 +380,7 @@ export const compressImage = async (imageUrl, maxWidth, maxHeight) => {
 		img.src = imageUrl;
 	});
 };
-export const generateInitialsImage = (name) => {
+export const generateInitialsImage = (name: string) => {
 	const canvas = document.createElement('canvas');
 	const ctx = canvas.getContext('2d');
 	canvas.width = 100;
@@ -376,29 +393,31 @@ export const generateInitialsImage = (name) => {
 		return `${WEBUI_BASE_URL}/user.png`;
 	}
 
-	ctx.fillStyle = '#F39C12';
-	ctx.fillRect(0, 0, canvas.width, canvas.height);
+	if (ctx) {
+		ctx.fillStyle = '#F39C12';
+		ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-	ctx.fillStyle = '#FFFFFF';
-	ctx.font = '40px Helvetica';
-	ctx.textAlign = 'center';
-	ctx.textBaseline = 'middle';
+		ctx.fillStyle = '#FFFFFF';
+		ctx.font = '40px Helvetica';
+		ctx.textAlign = 'center';
+		ctx.textBaseline = 'middle';
 
-	const sanitizedName = name.trim();
-	const initials =
-		sanitizedName.length > 0
-			? sanitizedName[0] +
-				(sanitizedName.split(' ').length > 1
-					? sanitizedName[sanitizedName.lastIndexOf(' ') + 1]
-					: '')
-			: '';
+		const sanitizedName = name.trim();
+		const initials =
+			sanitizedName.length > 0
+				? sanitizedName[0] +
+					(sanitizedName.split(' ').length > 1
+						? sanitizedName[sanitizedName.lastIndexOf(' ') + 1]
+						: '')
+				: '';
 
-	ctx.fillText(initials.toUpperCase(), canvas.width / 2, canvas.height / 2);
+		ctx.fillText(initials.toUpperCase(), canvas.width / 2, canvas.height / 2);
+	}
 
 	return canvas.toDataURL();
 };
 
-export const formatDate = (inputDate) => {
+export const formatDate = (inputDate: Date | string) => {
 	const date = dayjs(inputDate);
 
 	if (date.isToday()) {
@@ -410,7 +429,11 @@ export const formatDate = (inputDate) => {
 	}
 };
 
-export const copyToClipboard = async (text, html = null, formatted = false) => {
+export const copyToClipboard = async (
+	text: string,
+	html: string | null = null,
+	formatted = false
+) => {
 	if (formatted) {
 		let styledHtml = '';
 		if (!html) {
@@ -542,7 +565,7 @@ export const copyToClipboard = async (text, html = null, formatted = false) => {
 	}
 };
 
-export const compareVersion = (latest, current) => {
+export const compareVersion = (latest: string, current: string) => {
 	return current === '0.0.0'
 		? false
 		: current.localeCompare(latest, undefined, {
@@ -552,7 +575,7 @@ export const compareVersion = (latest, current) => {
 			}) < 0;
 };
 
-export const extractCurlyBraceWords = (text) => {
+export const extractCurlyBraceWords = (text: string) => {
 	const regex = /\{\{([^}]+)\}\}/g;
 	const matches = [];
 	let match;
@@ -568,7 +591,7 @@ export const extractCurlyBraceWords = (text) => {
 	return matches;
 };
 
-export const removeLastWordFromString = (inputString, wordString) => {
+export const removeLastWordFromString = (inputString: string, wordString: string) => {
 	console.log('inputString', inputString);
 	// Split the string by newline characters to handle lines separately
 	const lines = inputString.split('\n');
@@ -601,7 +624,7 @@ export const removeLastWordFromString = (inputString, wordString) => {
 	return resultString;
 };
 
-export const removeFirstHashWord = (inputString) => {
+export const removeFirstHashWord = (inputString: string) => {
 	// Split the string into an array of words
 	const words = inputString.split(' ');
 
@@ -619,7 +642,7 @@ export const removeFirstHashWord = (inputString) => {
 	return resultString;
 };
 
-export const transformFileName = (fileName) => {
+export const transformFileName = (fileName: string) => {
 	// Convert to lowercase
 	const lowerCaseFileName = fileName.toLowerCase();
 
@@ -632,7 +655,7 @@ export const transformFileName = (fileName) => {
 	return finalFileName;
 };
 
-export const calculateSHA256 = async (file) => {
+export const calculateSHA256 = async (file: File) => {
 	// Create a FileReader to read the file asynchronously
 	const reader = new FileReader();
 
@@ -666,7 +689,7 @@ export const calculateSHA256 = async (file) => {
 	}
 };
 
-export const getImportOrigin = (_chats) => {
+export const getImportOrigin = (_chats: any[]) => {
 	// Check what external service chat imports are from
 	if ('mapping' in _chats[0]) {
 		return 'openai';
@@ -674,7 +697,7 @@ export const getImportOrigin = (_chats) => {
 	return 'webui';
 };
 
-export const getUserPosition = async (raw = false) => {
+export const getUserPosition = async (raw = false): Promise<string | { latitude: number; longitude: number }> => {
 	// Get the user's location using the Geolocation API
 	const position = await new Promise((resolve, reject) => {
 		navigator.geolocation.getCurrentPosition(resolve, reject);
@@ -697,7 +720,7 @@ export const getUserPosition = async (raw = false) => {
 	}
 };
 
-const convertOpenAIMessages = (convo) => {
+const convertOpenAIMessages = (convo: any) => {
 	// Parse OpenAI chat messages and create chat dictionary for creating new chats
 	const mapping = convo['mapping'];
 	const messages = [];
@@ -755,7 +778,7 @@ const convertOpenAIMessages = (convo) => {
 	return chat;
 };
 
-const validateChat = (chat) => {
+const validateChat = (chat: any) => {
 	// Because ChatGPT sometimes has features we can't use like DALL-E or might have corrupted messages, need to validate
 	const messages = chat.messages;
 
@@ -786,7 +809,7 @@ const validateChat = (chat) => {
 	return true;
 };
 
-export const convertOpenAIChats = (_chats) => {
+export const convertOpenAIChats = (_chats: any[]) => {
 	// Create a list of dictionaries with each conversation from import
 	const chats = [];
 	let failed = 0;
@@ -871,7 +894,7 @@ export const cleanText = (content: string) => {
 	return removeFormattings(removeEmojis(content.trim()));
 };
 
-export const removeDetails = (content, types) => {
+export const removeDetails = (content: string, types: string[]) => {
 	for (const type of types) {
 		content = content.replace(
 			new RegExp(`<details\\s+type="${type}"[^>]*>.*?<\\/details>`, 'gis'),
@@ -882,12 +905,13 @@ export const removeDetails = (content, types) => {
 	return content;
 };
 
-export const removeAllDetails = (content) => {
+export const removeAllDetails = (content: string) => {
 	content = content.replace(/<details[^>]*>.*?<\/details>/gis, '');
 	return content;
 };
 
-export const processDetails = (content) => {
+export const processDetails = (content: string) => {
+	if (!content) return '';
 	content = removeDetails(content, ['reasoning', 'code_interpreter']);
 
 	// This regex matches <details> tags with type="tool_calls" and captures their attributes to convert them to a string
@@ -896,17 +920,148 @@ export const processDetails = (content) => {
 	if (matches) {
 		for (const match of matches) {
 			const attributesRegex = /(\w+)="([^"]*)"/g;
-			const attributes = {};
+			const attributes: Record<string, string> = {};
 			let attributeMatch;
 			while ((attributeMatch = attributesRegex.exec(match)) !== null) {
 				attributes[attributeMatch[1]] = attributeMatch[2];
 			}
 
-			content = content.replace(match, `"${attributes.result}"`);
+			if (attributes.result) {
+				content = content.replace(match, `"${attributes.result}"`);
+			}
 		}
 	}
 
 	return content;
+};
+
+// Helper function to extract attribute value from a detail string
+const getAttribute = (detailString: string, attr: string): string => {
+	const match = new RegExp(`${attr}="([^"]*)"`).exec(detailString);
+	// The browser's own parser will have unescaped " to "
+	return match ? match[1] : '';
+};
+
+// Helper function to unescape HTML entities and parse JSON from attributes
+const unescapeAndParse = (value: string | null): any => {
+	if (value === null || typeof value === 'undefined' || value === '') return null;
+	
+	// First, unescape HTML entities (&quot; -> ", &#x27; -> ')
+	const unescaped = value
+		.replace(/&quot;/g, '"')
+		.replace(/&#x27;/g, "'")
+		.replace(/&amp;/g, '&')
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>');
+	
+	try {
+		// Try to parse as JSON - this handles the case where the value is a JSON string
+		// e.g., "{\"foo\": \"bar\"}" becomes an object
+		return JSON.parse(unescaped);
+	} catch (e) {
+		// If it's not valid JSON, return the unescaped string
+		return unescaped;
+	}
+};
+
+export const convertMessagesForAPI = (messages: any[]) => {
+	return messages.flatMap((message) => {
+		if (
+			message.role !== 'assistant' ||
+			!message.content?.includes('<details type="tool_calls"')
+		) {
+			// Not an assistant message with tool calls, or content is null/empty.
+			// We still need to remove other details like 'reasoning'
+			return [
+				{
+					...message,
+					content: message.content
+						? removeDetails(message.content, ['reasoning', 'code_interpreter'])
+						: null
+				}
+			];
+		}
+
+		const content = message.content;
+		const apiMessages: any[] = [];
+
+		const toolCallPattern = /<details\s+type="tool_calls"[\s\S]*?<\/details>/gis;
+		const matches = [...content.matchAll(toolCallPattern)];
+
+		if (matches.length === 0) {
+			// Should not happen due to guard clause, but for safety:
+			return [{ ...message, content: removeDetails(content, ['reasoning', 'code_interpreter']) }];
+		}
+
+		let lastIndex = 0;
+
+		// 1. Content before any tool calls
+		const firstMatchIndex = matches[0].index ?? 0;
+		const contentBefore = content.substring(0, firstMatchIndex);
+		const cleanedContentBefore = removeDetails(contentBefore, [
+			'reasoning',
+			'code_interpreter'
+		]).trim();
+
+		// 2. Extract all tool calls and their results
+		const tool_calls: any[] = [];
+		const tool_messages: any[] = [];
+
+		for (const match of matches) {
+			const detailString = match[0];
+			const id = getAttribute(detailString, 'id');
+			const name = getAttribute(detailString, 'name');
+			const argsString = unescapeAndParse(getAttribute(detailString, 'arguments'));
+			const resultString = unescapeAndParse(getAttribute(detailString, 'result'));
+			const done = getAttribute(detailString, 'done');
+
+			tool_calls.push({
+				id: id,
+				type: 'function',
+				function: {
+					name: name,
+					arguments: argsString
+				}
+			});
+
+			if (done === 'true' && resultString !== null) {
+				tool_messages.push({
+					role: 'tool',
+					tool_call_id: id,
+					name: name,
+					content: resultString
+				});
+			}
+			lastIndex = (match.index ?? 0) + detailString.length;
+		}
+
+		// 3. The assistant message that makes the call
+		apiMessages.push({
+			...message,
+			role: 'assistant',
+			content: cleanedContentBefore || null,
+			tool_calls: tool_calls
+		});
+
+		// 4. The tool result messages
+		apiMessages.push(...tool_messages);
+
+		// 5. Content after all tool calls (becomes a new assistant message)
+		const contentAfter = content.substring(lastIndex);
+		const cleanedContentAfter = removeDetails(contentAfter, [
+			'reasoning',
+			'code_interpreter'
+		]).trim();
+
+		if (cleanedContentAfter) {
+			apiMessages.push({
+				role: 'assistant',
+				content: cleanedContentAfter
+			});
+		}
+
+		return apiMessages;
+	});
 };
 
 // This regular expression matches code blocks marked by triple backticks
