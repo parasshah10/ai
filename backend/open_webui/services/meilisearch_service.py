@@ -121,8 +121,47 @@ class MeiliSearchService:
     def delete_chat_from_index(self, chat_id: str):
         """Deletes all messages of a chat from the index."""
         log.info(f"Attempting to delete chat_id: {chat_id} from index")
-        self.index.delete_documents_by_filter(f"chatId = {chat_id}")
-        log.info(f"Successfully queued deletion for chat_id: {chat_id}")
+        try:
+            # Search for all documents with this chatId and delete them by ID
+            # We need to fetch all documents, so use a high limit
+            search_results = self.index.search("", {
+                "filter": f'chatId = "{chat_id}"',
+                "limit": 10000,
+                "attributesToRetrieve": ["id"]
+            })
+            
+            doc_ids = [hit["id"] for hit in search_results.get("hits", [])]
+            
+            if doc_ids:
+                log.info(f"Found {len(doc_ids)} documents to delete for chat_id: {chat_id}")
+                self.index.delete_documents(doc_ids)
+                log.info(f"Successfully queued deletion of {len(doc_ids)} documents for chat_id: {chat_id}")
+            else:
+                log.info(f"No documents found for chat_id: {chat_id}")
+        except Exception as e:
+            log.error(f"Failed to delete chat {chat_id} from index: {e}")
+
+    def delete_message_from_index(self, chat_id: str, message_id: str):
+        """Deletes a specific message from the index."""
+        doc_id = f"{chat_id}-{message_id}"
+        log.info(f"Attempting to delete message document: {doc_id} from index")
+        try:
+            self.index.delete_document(doc_id)
+            log.info(f"Successfully queued deletion for document: {doc_id}")
+        except Exception as e:
+            log.error(f"Failed to delete message document {doc_id}: {e}")
+
+    def delete_messages_from_index(self, chat_id: str, message_ids: list[str]):
+        """Deletes multiple messages from the index."""
+        if not message_ids:
+            return
+        doc_ids = [f"{chat_id}-{msg_id}" for msg_id in message_ids]
+        log.info(f"Attempting to delete {len(doc_ids)} message documents from index")
+        try:
+            self.index.delete_documents(doc_ids)
+            log.info(f"Successfully queued deletion for {len(doc_ids)} documents")
+        except Exception as e:
+            log.error(f"Failed to delete message documents: {e}")
 
     def search_messages(
         self,
@@ -175,12 +214,48 @@ class MeiliSearchService:
         return results
 
     def reindex_all_chats_for_user(self, user_id: str):
-        """Re-indexes all chats for a specific user."""
+        """Re-indexes all chats for a specific user, removing orphaned documents."""
         from open_webui.models.chats import Chats
         
         log.info(f"Re-indexing all chats for user {user_id}")
         
-        # Get all chats for this user
+        # Step 1: Delete all existing documents for this user to ensure clean sync
+        log.info(f"Deleting all existing documents for user {user_id}")
+        deleted_total = 0
+        try:
+            # Paginate through deletions to handle large datasets efficiently
+            batch_size = 10000
+            offset = 0
+            
+            while True:
+                search_results = self.index.search("", {
+                    "filter": f'userId = "{user_id}"',
+                    "limit": batch_size,
+                    "offset": offset,
+                    "attributesToRetrieve": ["id"]
+                })
+                
+                old_doc_ids = [hit["id"] for hit in search_results.get("hits", [])]
+                
+                if not old_doc_ids:
+                    break  # No more documents to delete
+                
+                self.index.delete_documents(old_doc_ids)
+                deleted_total += len(old_doc_ids)
+                log.info(f"Deleted batch of {len(old_doc_ids)} documents (total: {deleted_total})")
+                
+                # If we got fewer results than batch_size, we're done
+                if len(old_doc_ids) < batch_size:
+                    break
+                    
+            if deleted_total > 0:
+                log.info(f"Successfully queued deletion of {deleted_total} old documents for user {user_id}")
+            else:
+                log.info(f"No existing documents found for user {user_id}")
+        except Exception as e:
+            log.error(f"Failed to delete existing documents for user {user_id}: {e}")
+        
+        # Step 2: Re-index all current chats
         all_user_chats = Chats.get_chats_by_user_id(user_id)
         
         total_chats = len(all_user_chats)
@@ -194,8 +269,8 @@ class MeiliSearchService:
             except Exception as e:
                 log.error(f"Failed to index chat {chat.id}: {e}")
         
-        log.info(f"Re-indexing complete: {indexed_count}/{total_chats} chats indexed")
-        return {"total": total_chats, "indexed": indexed_count}
+        log.info(f"Re-indexing complete: deleted {deleted_total} old documents, indexed {indexed_count}/{total_chats} chats")
+        return {"total": total_chats, "indexed": indexed_count, "deleted": deleted_total}
     
     def parse_query_with_filters(self, raw_query: str) -> (str, Dict[str, Any]):
         """Parses special syntax like tag: and folder: from the query."""

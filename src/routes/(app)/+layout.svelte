@@ -246,10 +246,6 @@
 					setTimeout(() => {
 						document.getElementById('new-chat-button')?.click();
 					}, 0);
-				} else if (isShortcutMatch(event, shortcuts[Shortcut.GENERATE_MESSAGE_PAIR])) {
-					console.log('Shortcut triggered: GENERATE_MESSAGE_PAIR');
-					event.preventDefault();
-					document.getElementById('generate-message-pair-button')?.click();
 				} else if (isShortcutMatch(event, shortcuts[Shortcut.REGENERATE_RESPONSE])) {
 					console.log('Shortcut triggered: REGENERATE_RESPONSE');
 					event.preventDefault();
