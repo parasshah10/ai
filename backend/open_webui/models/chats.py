@@ -8,6 +8,7 @@ from open_webui.internal.db import Base, get_db
 from open_webui.models.tags import TagModel, Tag, Tags
 from open_webui.models.folders import Folders
 from open_webui.env import SRC_LOG_LEVELS
+from open_webui.services.meilisearch_service import get_meilisearch_service
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import BigInteger, Boolean, Column, String, Text, JSON, Index
@@ -146,6 +147,8 @@ class ChatTable:
             db.add(result)
             db.commit()
             db.refresh(result)
+
+            # Indexing will be handled by update_chat_by_id when first message is added
             return ChatModel.model_validate(result) if result else None
 
     def import_chat(
@@ -183,10 +186,22 @@ class ChatTable:
             db.add(result)
             db.commit()
             db.refresh(result)
+            
+            # Index imported chat
+            try:
+                if meilisearch_service := get_meilisearch_service():
+                    meilisearch_service.index_chat(result.id, user_id)
+            except Exception as e:
+                log.error(f"Failed to index imported chat {result.id} in MeiliSearch: {e}")
+            
             return ChatModel.model_validate(result) if result else None
 
     def update_chat_by_id(self, id: str, chat: dict) -> Optional[ChatModel]:
         try:
+            # Get old version for change detection
+            old_chat_model = self.get_chat_by_id(id)
+            old_messages = old_chat_model.chat.get("history", {}).get("messages", {}) if old_chat_model else {}
+            
             with get_db() as db:
                 chat_item = db.get(Chat, id)
                 chat_item.chat = chat
@@ -194,6 +209,23 @@ class ChatTable:
                 chat_item.updated_at = int(time.time())
                 db.commit()
                 db.refresh(chat_item)
+
+                # Detect changed messages (title changes don't trigger reindexing)
+                new_messages = chat.get("history", {}).get("messages", {})
+                changed_message_ids = set()
+                
+                for msg_id in new_messages:
+                    if (msg_id not in old_messages or
+                        old_messages[msg_id].get("content") != new_messages[msg_id].get("content")):
+                        changed_message_ids.add(msg_id)
+                
+                # Only index if messages actually changed
+                if changed_message_ids:
+                    try:
+                        if meilisearch_service := get_meilisearch_service():
+                            meilisearch_service.index_chat(id, chat_item.user_id)
+                    except Exception as e:
+                        log.error(f"Failed to index chat {id} in MeiliSearch: {e}")
 
                 return ChatModel.model_validate(chat_item)
         except Exception:
@@ -277,7 +309,11 @@ class ChatTable:
         history["currentId"] = message_id
 
         chat["history"] = history
-        return self.update_chat_by_id(id, chat)
+        
+        # update_chat_by_id will handle indexing with change detection
+        updated_chat = self.update_chat_by_id(id, chat)
+            
+        return updated_chat
 
     def add_message_status_to_chat_by_id_and_message_id(
         self, id: str, message_id: str, status: dict
@@ -1017,6 +1053,12 @@ class ChatTable:
 
     def delete_chat_by_id(self, id: str) -> bool:
         try:
+            try:
+                if meilisearch_service := get_meilisearch_service():
+                    meilisearch_service.delete_chat_from_index(id)
+            except Exception as e:
+                log.error(f"Failed to delete chat {id} from MeiliSearch index: {e}")
+
             with get_db() as db:
                 db.query(Chat).filter_by(id=id).delete()
                 db.commit()
@@ -1027,6 +1069,12 @@ class ChatTable:
 
     def delete_chat_by_id_and_user_id(self, id: str, user_id: str) -> bool:
         try:
+            try:
+                if meilisearch_service := get_meilisearch_service():
+                    meilisearch_service.delete_chat_from_index(id)
+            except Exception as e:
+                log.error(f"Failed to delete chat {id} from MeiliSearch index: {e}")
+
             with get_db() as db:
                 db.query(Chat).filter_by(id=id, user_id=user_id).delete()
                 db.commit()

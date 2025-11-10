@@ -5,8 +5,6 @@ from open_webui.internal.db import Base, JSONField, get_db
 
 
 from open_webui.env import DATABASE_USER_ACTIVE_STATUS_UPDATE_INTERVAL
-from open_webui.models.chats import Chats
-from open_webui.models.groups import Groups
 from open_webui.utils.misc import throttle
 
 
@@ -406,6 +404,9 @@ class UsersTable:
             return None
 
     def delete_user_by_id(self, id: str) -> bool:
+        from open_webui.models.chats import Chats
+        from open_webui.models.groups import Groups
+
         try:
             # Remove User from Groups
             Groups.remove_user_from_all_groups(id)

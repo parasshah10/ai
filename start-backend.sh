@@ -125,6 +125,7 @@ echo -e "${YELLOW}Press Ctrl+C to stop${NC}\n"
 
 # Run Docker container
 sudo docker run -it --rm \
+  --network ai_default \
   --name ${CONTAINER_NAME} \
   -p ${PORT}:${PORT} \
   -v "${PROJECT_DIR}":/app \

@@ -525,6 +525,10 @@ from open_webui.tasks import (
 )  # Import from tasks.py
 
 from open_webui.utils.redis import get_sentinels_from_env
+from open_webui.services.meilisearch_service import (
+    initialize_meilisearch_service,
+    shutdown_meilisearch_service,
+)
 
 
 from open_webui.constants import ERROR_MESSAGES
@@ -607,6 +611,9 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(periodic_usage_pool_cleanup())
 
+    # Initialize MeiliSearch Service
+    initialize_meilisearch_service()
+
     if app.state.config.ENABLE_BASE_MODELS_CACHE:
         await get_all_models(
             Request(
@@ -629,6 +636,9 @@ async def lifespan(app: FastAPI):
         )
 
     yield
+
+    # Shutdown MeiliSearch Service
+    shutdown_meilisearch_service()
 
     if hasattr(app.state, "redis_task_command_listener"):
         app.state.redis_task_command_listener.cancel()

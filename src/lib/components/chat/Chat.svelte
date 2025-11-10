@@ -96,11 +96,11 @@
 	import Tooltip from '../common/Tooltip.svelte';
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
-	import { updateFolderById } from '$lib/apis/folders';
 	import ChatMinimap from './ChatMinimap.svelte';
 	import ChatMinimapMobile from './ChatMinimapMobile.svelte';
 
 	export let chatIdProp = '';
+	export let messageId = '';
 
 	let loading = true;
 
@@ -159,7 +159,12 @@
 	let files = [];
 	let params = {};
 
-	$: if (chatIdProp) {
+	let previousChatId = '';
+	let previousMessageId = '';
+
+	$: if (chatIdProp !== previousChatId || messageId !== previousMessageId) {
+		previousChatId = chatIdProp;
+		previousMessageId = messageId;
 		navigateHandler();
 	}
 
@@ -206,6 +211,81 @@
 
 			const chatInput = document.getElementById('chat-input');
 			chatInput?.focus();
+
+			if (messageId) {
+				const message = history.messages[messageId];
+
+				if (message) {
+					// Find the leaf of the branch containing the message
+					let leafId = messageId;
+					while (history.messages[leafId]?.childrenIds?.length > 0) {
+						leafId = history.messages[leafId].childrenIds.at(-1);
+					}
+
+					// Set the currentId to the leaf of the branch
+					history.currentId = leafId;
+					history = history; // Trigger reactivity
+					await tick(); // Wait for DOM update
+
+					// Check if the message element exists, if not, load more messages
+					let messageElement = document.getElementById(`message-${messageId}`);
+					
+					if (!messageElement && messagesComponent) {
+						// Calculate how many messages we need to load
+						// Find the index of the target message in the full path
+						const messagePath = [];
+						let currentId = leafId;
+						while (currentId !== null) {
+							messagePath.unshift(currentId);
+							const msg = history.messages[currentId];
+							currentId = msg?.parentId ?? null;
+						}
+						
+						const messageIndex = messagePath.indexOf(messageId);
+						if (messageIndex !== -1) {
+							const requiredCount = messagePath.length - messageIndex + 5;
+							await messagesComponent.loadMessagesToCount(requiredCount);
+							await tick();
+							messageElement = document.getElementById(`message-${messageId}`);
+						}
+					}
+
+					// Now, scroll to and highlight the original target message
+					setTimeout(() => {
+						if (messageElement && messagesContainerElement) {
+							const containerRect = messagesContainerElement.getBoundingClientRect();
+							const elementRect = messageElement.getBoundingClientRect();
+							const offset = 25; // A small offset from the top
+							const delta = elementRect.top - containerRect.top - offset;
+
+							messagesContainerElement.scrollTo({
+								top: messagesContainerElement.scrollTop + delta,
+								behavior: 'smooth'
+							});
+
+							// Add a subtle, pulsing highlight effect
+							messageElement.style.transition = 'all 0.3s ease-in-out';
+							messageElement.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'; // blue-500 with 10% opacity
+							messageElement.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.3)';
+							
+							// Pulse effect
+							setTimeout(() => {
+								messageElement.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+								messageElement.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.4)';
+							}, 300);
+							
+							// Fade out
+							setTimeout(() => {
+								messageElement.style.backgroundColor = '';
+								messageElement.style.boxShadow = '';
+								setTimeout(() => {
+									messageElement.style.transition = '';
+								}, 300);
+							}, 1500);
+						}
+					}, 100);
+				}
+			}
 		} else {
 			await goto('/');
 		}

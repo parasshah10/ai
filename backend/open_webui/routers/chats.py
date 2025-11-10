@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.utils.access_control import has_permission
+from open_webui.services.meilisearch_service import get_meilisearch_service
 
 log = logging.getLogger(__name__)
 log.setLevel(SRC_LOG_LEVELS["MODELS"])
@@ -172,6 +173,58 @@ async def import_chat(form_data: ChatImportForm, user=Depends(get_verified_user)
 ############################
 # GetChats
 ############################
+
+
+@router.get("/search/messages")
+def search_messages(
+    q: str,
+    user=Depends(get_verified_user),
+    chat_id: Optional[str] = None,
+    page: int = 1,
+    limit: int = 60,
+    sort_by: str = "relevance",
+    role: Optional[str] = None,
+    timestamp_gte: Optional[int] = None,
+    tags: Optional[str] = None,
+    folder_id: Optional[str] = None,
+):
+    if meilisearch_service := get_meilisearch_service():
+        # Build filters dict
+        filters = {}
+        if role:
+            filters['role'] = role
+        if timestamp_gte:
+            filters['timestamp_gte'] = timestamp_gte
+        if tags:
+            filters['tags'] = tags.split(',')
+        if folder_id:
+            filters['folder_id'] = folder_id
+            
+        return meilisearch_service.search_messages(
+            query=q,
+            user_id=user.id,
+            chat_id=chat_id,
+            page=page,
+            limit=limit,
+            sort_by=sort_by,
+            filters=filters
+        )
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Search service is not available.",
+    )
+
+
+@router.post("/search/reindex")
+def reindex_user_chats(user=Depends(get_verified_user)):
+    """Re-indexes all chats for the current user."""
+    if meilisearch_service := get_meilisearch_service():
+        result = meilisearch_service.reindex_all_chats_for_user(user.id)
+        return result
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Search service is not available.",
+    )
 
 
 @router.get("/search", response_model=list[ChatTitleIdResponse])

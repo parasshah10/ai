@@ -2749,6 +2749,10 @@ RAG_OLLAMA_API_KEY = PersistentConfig(
 )
 
 
+# MeiliSearch Configuration
+MEILISEARCH_URL = os.getenv("MEILISEARCH_URL", None)
+MEILISEARCH_API_KEY = os.getenv("MEILISEARCH_API_KEY", None)
+
 ENABLE_RAG_LOCAL_WEB_FETCH = (
     os.getenv("ENABLE_RAG_LOCAL_WEB_FETCH", "False").lower() == "true"
 )
