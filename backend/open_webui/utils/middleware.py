@@ -2111,10 +2111,11 @@ async def process_chat_response(
                 temp_blocks = []
                 for idx, block in enumerate(content_blocks):
                     if block["type"] == "tool_calls":
+                        content = serialize_content_blocks(temp_blocks, raw)
                         messages.append(
                             {
                                 "role": "assistant",
-                                "content": serialize_content_blocks(temp_blocks, raw),
+                                "content": content if content else None,
                                 "tool_calls": block.get("content"),
                             }
                         )
@@ -2871,7 +2872,7 @@ async def process_chat_response(
                         results.append(
                             {
                                 "tool_call_id": tool_call_id,
-                                "content": tool_result or "",
+                                "content": str(tool_result) if tool_result is not None else "",
                                 **(
                                     {"files": tool_result_files}
                                     if tool_result_files
@@ -2910,10 +2911,20 @@ async def process_chat_response(
                             "messages": [
                                 *form_data["messages"],
                                 *convert_content_blocks_to_messages(
-                                    content_blocks, True
+                                    content_blocks, False
                                 ),
                             ],
                         }
+
+                        # Clean messages before API call
+                        for msg in new_form_data["messages"]:
+                            if "content" in msg and isinstance(msg["content"], str):
+                                msg["content"] = re.sub(
+                                    r"<details[^>]*>.*?</details>",
+                                    "",
+                                    msg["content"],
+                                    flags=re.S,
+                                )
 
                         res = await generate_chat_completion(
                             request,
