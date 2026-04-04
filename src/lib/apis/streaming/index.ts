@@ -120,22 +120,23 @@ async function* streamLargeDeltasAsRandomChunks(
 			continue;
 		}
 
-		let content = textStreamUpdate.value;
-		if (content.length < 5) {
-			yield { done: false, value: content };
-			continue;
-		}
-		while (content != '') {
-			const chunkSize = Math.min(Math.floor(Math.random() * 3) + 1, content.length);
-			const chunk = content.slice(0, chunkSize);
-			yield { done: false, value: chunk };
-			// Do not sleep if the tab is hidden
-			// Timers are throttled to 1s in hidden tabs
-			if (document?.visibilityState !== 'hidden') {
-				await sleep(5);
-			}
-			content = content.slice(chunkSize);
-		}
+		// let content = textStreamUpdate.value;
+		// if (content.length < 5) {
+		// 	yield { done: false, value: content };
+		// 	continue;
+		// }
+		// while (content != '') {
+		// 	const chunkSize = Math.min(Math.floor(Math.random() * 3) + 1, content.length);
+		// 	const chunk = content.slice(0, chunkSize);
+		// 	yield { done: false, value: chunk };
+		// 	// Do not sleep if the tab is hidden
+		// 	// Timers are throttled to 1s in hidden tabs
+		// 	if (document?.visibilityState !== 'hidden') {
+		// 		await sleep(5);
+		// 	}
+		// 	content = content.slice(chunkSize);
+		// }
+		yield textStreamUpdate;
 	}
 }
 

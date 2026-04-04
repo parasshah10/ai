@@ -36,6 +36,8 @@
 	export let onTaskClick = () => {};
 
 	let tokens = [];
+	let rendering = false;
+	let pendingContent = '';
 
 	const options = {
 		throwOnError: false,
@@ -51,51 +53,71 @@
 
 	const USE_UNIFIED_PARSER = true;
 
-	$: (async () => {
-		if (!content && content !== '') return;
+	const renderMarkdown = () => {
+		if (rendering) return;
+		rendering = true;
 
-		const msg = String(content ?? '');
-		const processedContent = processResponseContent(msg);
-		const contentWithReplacedTokens = replaceTokens(
-			processedContent,
-			sourceIds,
-			model?.name,
-			$user?.name
-		);
+		requestAnimationFrame(() => {
+			const contentToRender = pendingContent;
+			if (contentToRender === null || typeof contentToRender === 'undefined') {
+				rendering = false;
+				return;
+			}
 
-		// To re-enable markdown rendering for user messages, remove the "if (role === 'user')" block
-		// below and uncomment the original parser selection logic that has been commented out.
-		/*
-		if (USE_UNIFIED_PARSER && role === 'user') {
-			const useHybrid = role === 'user';
-			const unifiedResult = parseMarkdownToTokens(contentWithReplacedTokens, id, useHybrid);
-			if (unifiedResult.success) {
-				tokens = unifiedResult.tokens;
+			const msg = String(contentToRender ?? '');
+			const processedContent = processResponseContent(msg);
+			const contentWithReplacedTokens = replaceTokens(
+				processedContent,
+				sourceIds,
+				model?.name,
+				$user?.name
+			);
+
+			if (role === 'user') {
+				tokens = [
+					{
+						type: 'paragraph',
+						raw: contentWithReplacedTokens,
+						text: contentWithReplacedTokens,
+						tokens: [
+							{ type: 'text', raw: contentWithReplacedTokens, text: contentWithReplacedTokens }
+						]
+					}
+				];
 			} else {
-				// Fallback to marked parser
 				tokens = marked.lexer(contentWithReplacedTokens);
 			}
-		} else {
-			tokens = marked.lexer(contentWithReplacedTokens);
-		}
-		*/
 
-		// Markdown rendering is disabled for user messages. The original content is rendered as plain text.
-		if (role === 'user') {
-			// Create a simple token structure to render raw text.
-			tokens = [
-				{
-					type: 'paragraph',
-					raw: contentWithReplacedTokens,
-					text: contentWithReplacedTokens,
-					tokens: [{ type: 'text', raw: contentWithReplacedTokens, text: contentWithReplacedTokens }]
-				}
-			];
-		} else {
-			// For AI messages, use the marked parser.
-			tokens = marked.lexer(contentWithReplacedTokens);
+			rendering = false;
+
+			if (pendingContent !== contentToRender) {
+				renderMarkdown();
+			}
+		});
+	};
+
+	$: {
+		if (content !== pendingContent) {
+			pendingContent = content;
+			if (!done) {
+				// Fast path for streaming: render as plain text
+				tokens = [
+					{
+						type: 'paragraph',
+						raw: content,
+						text: content,
+						tokens: [{ type: 'text', raw: content, text: content }]
+					}
+				];
+			} else {
+				renderMarkdown();
+			}
 		}
-	})();
+	}
+
+	$: if (done) {
+		renderMarkdown();
+	}
 </script>
 
 {#key id}
