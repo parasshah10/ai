@@ -1678,24 +1678,24 @@ async def upload_to_cloudinary(
     user=Depends(get_verified_user)
 ):
     try:
-        def determine_avif_quality(img):
-            """
-            AVIF quality mapping:
-            - 90% quality for images <= 2MP
-            - Quality decreases for images larger than 2MP
-            - Floor at 50% for very large images
-            """
-            width, height = img.size
-            pixels = width * height
-            mp = pixels / 1_000_000  # Convert pixels to megapixels
-
-            if mp <= 2:
-                quality = 90  # Max quality for images up to 2MP
-            else:
-                # Decrease quality inversely proportional to the square root of the image size
-                quality = 90 * (2 / mp)**0.5
-                quality = max(50, quality)  # Ensure quality doesn't drop below 50%
-            return int(quality)
+#         def determine_avif_quality(img):
+#             """
+#             AVIF quality mapping:
+#             - 90% quality for images <= 2MP
+#             - Quality decreases for images larger than 2MP
+#             - Floor at 50% for very large images
+#             """
+#             width, height = img.size
+#             pixels = width * height
+#             mp = pixels / 1_000_000  # Convert pixels to megapixels
+#
+#             if mp <= 2:
+#                 quality = 90  # Max quality for images up to 2MP
+#             else:
+#                 # Decrease quality inversely proportional to the square root of the image size
+#                 quality = 90 * (2 / mp)**0.5
+#                 quality = max(50, quality)  # Ensure quality doesn't drop below 50%
+#             return int(quality)
 
         # Read the file contents
         contents = await file.read()
@@ -1708,17 +1708,17 @@ async def upload_to_cloudinary(
                 resource_type="image"
             )
         else:
-            # For other file types, convert to AVIF
+            # For other file types, convert to WebP
             img = Image.open(io.BytesIO(contents))
 
-            # Save to memory as AVIF
-            avif_buffer = io.BytesIO()
-            img.save(avif_buffer, format='AVIF', quality=determine_avif_quality(img))
-            avif_buffer.seek(0)
+            # Save to memory as WebP
+            webp_buffer = io.BytesIO()
+            img.save(webp_buffer, format="WEBP", quality=92)
+            webp_buffer.seek(0)
 
-            # Upload converted AVIF
+            # Upload converted WebP
             upload_result = cloudinary.uploader.upload(
-                avif_buffer,
+                webp_buffer,
                 resource_type="image"
             )
 
