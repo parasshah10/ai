@@ -2,18 +2,28 @@
 	import type { WorkBook } from 'xlsx';
 	import DOMPurify from 'dompurify';
 
-	import { getContext, onMount, tick } from 'svelte';
+	import { getContext, onMount, tick, createEventDispatcher } from 'svelte';
 
-	import { formatFileSize, getLineCount } from '$lib/utils';
+	import { formatFileSize, getLineCount, copyToClipboard } from '$lib/utils';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 	import { settings } from '$lib/stores';
 	import { getKnowledgeById } from '$lib/apis/knowledge';
-	import { getFileById, getFileContentById } from '$lib/apis/files';
+	import { getFileById, getFileContentById, updateFileDataContentById, updateFileById } from '$lib/apis/files';
+	import { toast } from 'svelte-sonner';
+
+	import { languages } from '@codemirror/language-data';
+	import Selector from './Selector.svelte';
 
 	import CodeBlock from '$lib/components/chat/Messages/CodeBlock.svelte';
 	import Markdown from '$lib/components/chat/Messages/Markdown.svelte';
+	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
+	import Clipboard from '$lib/components/icons/Clipboard.svelte';
+	import Check from '$lib/components/icons/Check.svelte';
+	import EditPencil from '$lib/components/icons/EditPencil.svelte';
+	import FloppyDisk from '$lib/components/icons/FloppyDisk.svelte';
 
 	const i18n = getContext('i18n');
+	const dispatch = createEventDispatcher();
 
 	const CONTENT_PREVIEW_LIMIT = 10000;
 	let expandedContent = false;
@@ -254,43 +264,297 @@
 			enableFullContent = true;
 		}
 	});
+
+	// --- Start Synthesized Copy/Edit Logic ---
+	type ModalMode = 'view' | 'edit';
+	let mode: ModalMode = 'view';
+	let isSaving = false;
+	let copied = false;
+	let copyTimeout: ReturnType<typeof setTimeout> | null = null;
+	
+	let draftContent = '';
+	let originalContent = '';
+
+	let isRenaming = false;
+	let fileNameDraft = '';
+
+	$: isText =
+		isMarkdown ||
+		isCode ||
+		(!isPDF &&
+			!isImage &&
+			!isAudio &&
+			!isExcel &&
+			!isDocx &&
+			!isPptx &&
+			(item?.file?.data?.content !== undefined || item?.content !== undefined));
+	$: canEdit = isText; // Always allow edit if it's text
+	$: isDirty = mode === 'edit' && draftContent !== originalContent;
+
+	const languageOptions = languages
+		.map((l) => ({
+			value: l.alias[0],
+			label: l.name
+		}))
+		.sort((a, b) => a.label.localeCompare(b.label));
+
+	function detectLang(name: string = ''): string {
+		const ext = name.split('.').pop()?.toLowerCase() ?? '';
+		if (ext) {
+			const language = languages.find((l) => l.extensions.includes(ext));
+			if (language) {
+				return language.alias[0];
+			}
+		}
+		return 'text';
+	}
+
+	let editorLang = 'text';
+	$: if (item) {
+		editorLang = detectLang(item?.file?.filename ?? item?.file?.name ?? '');
+	}
+
+	$: if (show && mode === 'view' && item) {
+		const currentContent = String(item?.file?.data?.content ?? item?.content ?? '');
+		if (currentContent !== originalContent) {
+			originalContent = currentContent;
+			draftContent = currentContent;
+		}
+	}
+
+	const handleCopy = async () => {
+		const content = item?.file?.data?.content ?? item?.content ?? '';
+		if (!content) return;
+
+		const ok = await copyToClipboard(content);
+		if (!ok) {
+			toast.error($i18n.t('Failed to copy to clipboard'));
+			return;
+		}
+
+		copied = true;
+		if (copyTimeout) clearTimeout(copyTimeout);
+		copyTimeout = setTimeout(() => (copied = false), 1500);
+	};
+
+	const enterEdit = async () => {
+		if (!canEdit || isSaving) return;
+		originalContent = item?.file?.data?.content ?? item?.content ?? '';
+		draftContent = originalContent;
+		mode = 'edit';
+		if (copyTimeout) {
+			clearTimeout(copyTimeout);
+			copied = false;
+		}
+		await tick();
+	};
+
+	const handleCancel = () => {
+		if (isSaving) return;
+		if (isDirty && !window.confirm($i18n.t('Discard unsaved changes?'))) return;
+		draftContent = originalContent;
+		mode = 'view';
+	};
+
+	const requestClose = () => {
+		if (isSaving) return;
+		if (mode === 'edit' && isDirty && !window.confirm($i18n.t('Discard unsaved changes?'))) return;
+		draftContent = originalContent;
+		mode = 'view';
+		show = false;
+	};
+
+	const handleRename = async () => {
+		if (!fileNameDraft || fileNameDraft === (item?.file?.filename ?? item?.file?.name)) {
+			isRenaming = false;
+			return;
+		}
+
+		try {
+			const res = await updateFileById(localStorage.token, item.id, {
+				filename: fileNameDraft
+			});
+
+			if (res) {
+				// MERGE: Preserve data.content by merging 'res' into existing file object
+				item.file = { ...item.file, ...res };
+				item.name = res.filename;
+				item = { ...item };
+
+				fileNameDraft = res.filename;
+				toast.success($i18n.t('File renamed successfully'));
+				dispatch('save', item);
+			}
+		} catch (e) {
+			console.error(e);
+			toast.error($i18n.t('Failed to rename file'));
+		} finally {
+			isRenaming = false;
+		}
+	};
+
+	const handleSave = async () => {
+		if (isSaving || !isDirty || !canEdit) return;
+
+		const token = localStorage.token;
+		isSaving = true;
+		try {
+			const res = await updateFileDataContentById(token, item.id, draftContent);
+			if (!res) throw new Error('No response');
+
+			const savedContent =
+				res?.file?.data?.content ?? res?.data?.content ?? res?.content ?? draftContent;
+			const previousFile = item?.file ?? {};
+			const previousData = previousFile?.data ?? {};
+
+			item = {
+				...item,
+				file: {
+					...previousFile,
+					data: {
+						...previousData,
+						content: savedContent
+					}
+				}
+			};
+
+			originalContent = savedContent;
+			draftContent = savedContent;
+			mode = 'view';
+			toast.success($i18n.t('File saved'));
+			dispatch('save', item);
+		} catch (e) {
+			console.error(e);
+			toast.error($i18n.t('Failed to save file'));
+		} finally {
+			isSaving = false;
+		}
+	};
+	// --- End Synthesized Copy/Edit Logic ---
 </script>
 
-<Modal bind:show size="lg">
+<Modal bind:show onClose={requestClose} size="lg">
 	<div class="font-primary px-4.5 py-3.5 w-full flex flex-col justify-center dark:text-gray-400">
 		<div class=" pb-2">
 			<div class="flex items-start justify-between">
-				<div>
-					<div class=" font-medium text-lg dark:text-gray-100">
-						<a
-							href="#"
-							class="hover:underline line-clamp-1"
-							on:click|preventDefault={() => {
-								if (!isPDF && item.url) {
-									window.open(
-										item.type === 'file'
-											? item?.url?.startsWith('http')
-												? item.url
-												: `${WEBUI_API_BASE_URL}/files/${item.url}/content`
-											: item.url,
-										'_blank'
-									);
-								}
-							}}
-						>
-							{item?.name ?? 'File'}
-						</a>
+				<div class="group">
+					<div class="flex items-center gap-1.5 font-medium text-lg dark:text-gray-100">
+						{#if isRenaming}
+							<input
+								class="w-full bg-transparent outline-hidden border-b border-gray-500 pb-0.5"
+								bind:value={fileNameDraft}
+								on:keydown={(e) => {
+									if (e.key === 'Enter') handleRename();
+									if (e.key === 'Escape') isRenaming = false;
+								}}
+								autofocus
+							/>
+							<button class="p-1 hover:text-gray-900 dark:hover:text-white transition" on:click={handleRename}>
+								<FloppyDisk className="size-4" />
+							</button>
+							<button class="p-1 hover:text-gray-900 dark:hover:text-white transition" on:click={() => (isRenaming = false)}>
+								<XMark className="size-4" />
+							</button>
+						{:else}
+							<a
+								href="#"
+								class="hover:underline line-clamp-1"
+								on:click|preventDefault={() => {
+									if (!isPDF && item.url) {
+										window.open(
+											item.type === 'file'
+												? item?.url?.startsWith('http')
+													? item.url
+													: `${WEBUI_API_BASE_URL}/files/${item.url}/content`
+												: item.url,
+											'_blank'
+										);
+									}
+								}}
+							>
+								{item?.file?.filename ?? item?.file?.name ?? item?.name ?? $i18n.t('File')}
+							</a>
+							<button
+								class="p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white transition opacity-0 group-hover:opacity-100 focus:opacity-100"
+								on:click={() => {
+									fileNameDraft = item?.file?.filename ?? item?.file?.name ?? item?.name;
+									isRenaming = true;
+								}}
+							>
+								<EditPencil className="size-3.5" />
+							</button>
+						{/if}
 					</div>
 				</div>
 
-				<div>
-					<button
-						on:click={() => {
-							show = false;
-						}}
-					>
-						<XMark />
-					</button>
+				<div class="flex items-center gap-1 shrink-0">
+					{#if canEdit}
+						<div class="mr-1 mt-0.5">
+							<Selector
+											bind:value={editorLang}
+											items={languageOptions}
+											align="end"
+											placeholder={$i18n.t('Plain Text')}
+											searchPlaceholder={$i18n.t('Search language...')}
+										/>						</div>
+					{/if}
+
+					{#if mode === 'view' && isText}
+						<Tooltip content={copied ? $i18n.t('Copied') : $i18n.t('Copy')}>
+							<button
+								class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition self-center"
+								on:click={handleCopy}
+							>
+								{#if copied}
+									<Check className="size-4 text-green-500" strokeWidth="2.5" />
+								{:else}
+									<Clipboard className="size-4" strokeWidth="2" />
+								{/if}
+							</button>
+						</Tooltip>
+						<Tooltip content={$i18n.t('Edit')}>
+							<button
+								class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition self-center"
+								on:click={enterEdit}
+							>
+								<EditPencil className="size-4" strokeWidth="2" />
+							</button>
+						</Tooltip>
+					{:else if mode === 'edit'}
+						<Tooltip content={$i18n.t('Save')}>
+							<button
+								class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition self-center disabled:opacity-40 disabled:cursor-not-allowed"
+								on:click={handleSave}
+								disabled={isSaving || !isDirty}
+							>
+								{#if isSaving}
+									<Spinner className="size-4" />
+								{:else}
+									<FloppyDisk className="size-4" strokeWidth="2" />
+								{/if}
+							</button>
+						</Tooltip>
+						<Tooltip content={$i18n.t('Cancel')}>
+							<button
+								class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition self-center disabled:opacity-40 disabled:cursor-not-allowed"
+								on:click={handleCancel}
+								disabled={isSaving}
+							>
+								<XMark className="size-4" strokeWidth="2" />
+							</button>
+						</Tooltip>
+					{/if}
+
+					<div class="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-800" aria-hidden="true" />
+
+					<Tooltip content={$i18n.t('Close')}>
+						<button
+							class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-850 transition self-center"
+							on:click={requestClose}
+						>
+							<XMark className="size-4" strokeWidth="2" />
+						</button>
+					</Tooltip>
 				</div>
 			</div>
 
@@ -390,7 +654,7 @@
 					</div>
 				{/if}
 
-				{#if isAudio || isPDF || isExcel || isCode || isMarkdown || isDocx || isPptx}
+				{#if mode === 'view' && (isAudio || isPDF || isExcel || isCode || isMarkdown || isDocx || isPptx || isText)}
 					<div
 						class="flex mb-2.5 scrollbar-none overflow-x-auto w-full border-b border-gray-50 dark:border-gray-850/30 text-center text-sm font-medium bg-transparent dark:text-gray-200"
 					>
@@ -437,6 +701,26 @@
 								draggable="false"
 							/>
 						</PanzoomContainer>
+					</div>
+				{:else if mode === 'edit'}
+					<div class="file-modal-editor-shell relative overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950">
+						<CodeEditor
+							id={`file-editor-${item.id}`}
+							value={draftContent}
+							lang={editorLang}
+							onChange={(val) => {
+								draftContent = val;
+							}}
+							onSave={handleSave}
+						/>
+						{#if isSaving}
+							<div class="absolute inset-0 z-10 flex items-start justify-end bg-white/50 p-3 backdrop-blur-[1px] dark:bg-black/30" aria-hidden="true">
+								<div class="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+									<span class="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+									{$i18n.t('Saving...')}
+								</div>
+							</div>
+						{/if}
 					</div>
 				{:else if selectedTab === ''}
 					{#if item?.file?.data}
@@ -637,10 +921,12 @@
 						{:else}
 							<div class="text-gray-500 text-sm p-4">No content available</div>
 						{/if}
-					{:else}
+					{:else if isText}
 						<div class="max-h-96 overflow-scroll scrollbar-hidden text-xs whitespace-pre-wrap">
-							{(item?.file?.data?.content ?? '').trim() || 'No content'}
+							{(item?.file?.data?.content ?? item?.content ?? '').trim() || 'No content'}
 						</div>
+					{:else}
+						<div class="text-gray-500 text-sm p-4">{$i18n.t('No content available')}</div>
 					{/if}
 				{/if}
 			{:else}
@@ -698,5 +984,21 @@
 
 	:global(.dark .excel-table-container table tr:hover) {
 		background-color: rgba(51, 51, 51, 0.5);
+	}
+
+	.file-modal-editor-shell :global(.cm-editor) {
+		height: min(62vh, 720px);
+		min-height: 420px;
+	}
+
+	.file-modal-editor-shell :global(.cm-scroller) {
+		overflow: auto;
+	}
+
+	@media (max-width: 640px) {
+		.file-modal-editor-shell :global(.cm-editor) {
+			height: 58vh;
+			min-height: 320px;
+		}
 	}
 </style>

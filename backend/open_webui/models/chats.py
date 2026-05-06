@@ -14,6 +14,8 @@ from open_webui.models.folders import Folders
 from open_webui.models.chat_messages import ChatMessage, ChatMessages
 from open_webui.models.automations import AutomationRun
 from open_webui.utils.misc import sanitize_data_for_db, sanitize_text_for_db
+from open_webui.env import SRC_LOG_LEVELS
+from open_webui.services.meilisearch_service import get_meilisearch_service
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import (
@@ -330,6 +332,13 @@ class ChatTable:
             except Exception as e:
                 log.warning(f'Failed to write initial messages to chat_message table: {e}')
 
+            # Index the new chat
+            try:
+                if meilisearch_service := get_meilisearch_service():
+                    await meilisearch_service.index_chat(chat_item.id, user_id)
+            except Exception as e:
+                log.error(f"Failed to index new chat {chat_item.id} in MeiliSearch: {e}")
+
             return ChatModel.model_validate(chat_item) if chat_item else None
 
     def _chat_import_form_to_chat_model(self, user_id: str, form_data: ChatImportForm) -> ChatModel:
@@ -381,10 +390,22 @@ class ChatTable:
             except Exception as e:
                 log.warning(f'Failed to write imported messages to chat_message table: {e}')
 
+            # Index imported chats
+            try:
+                if meilisearch_service := get_meilisearch_service():
+                    for chat_obj in chats:
+                        await meilisearch_service.index_chat(chat_obj.id, user_id)
+            except Exception as e:
+                log.error(f"Failed to index imported chats in MeiliSearch: {e}")
+
             return [ChatModel.model_validate(chat) for chat in chats]
 
     async def update_chat_by_id(self, id: str, chat: dict, db: Optional[AsyncSession] = None) -> Optional[ChatModel]:
         try:
+            # Get old version for change detection (Paras customizations)
+            old_chat_model = await self.get_chat_by_id(id)
+            old_messages = old_chat_model.chat.get("history", {}).get("messages", {}) if old_chat_model else {}
+
             async with get_async_db_context(db) as db:
                 chat_item = await db.get(Chat, id)
                 chat_item.chat = self._clean_null_bytes(chat)
@@ -393,6 +414,41 @@ class ChatTable:
                 chat_item.updated_at = int(time.time())
 
                 await db.commit()
+                await db.refresh(chat_item)
+
+                # Detect changed and deleted messages (Paras customizations)
+                new_messages = chat.get("history", {}).get("messages", {})
+                changed_message_ids = set()
+                deleted_message_ids = set()
+
+                # Find changed messages
+                for msg_id in new_messages:
+                    if (msg_id not in old_messages or
+                        old_messages[msg_id].get("content") != new_messages[msg_id].get("content")):
+                        changed_message_ids.add(msg_id)
+
+                # Find deleted messages
+                for msg_id in old_messages:
+                    if msg_id not in old_messages: # wait, this was a typo in original? msg_id not in new_messages
+                        pass 
+                
+                # Correcting the logic from original:
+                for msg_id in old_messages:
+                    if msg_id not in new_messages:
+                        deleted_message_ids.add(msg_id)
+
+                # Handle index updates
+                if changed_message_ids or deleted_message_ids:
+                    try:
+                        if meilisearch_service := get_meilisearch_service():
+                            # Delete removed messages from index
+                            if deleted_message_ids:
+                                await meilisearch_service.delete_messages_from_index(id, list(deleted_message_ids))
+
+                            # Re-index chat (adds/updates current messages)
+                            await meilisearch_service.index_chat(id, chat_item.user_id)
+                    except Exception as e:
+                        log.error(f"Failed to update chat {id} in MeiliSearch index: {e}")
 
                 return ChatModel.model_validate(chat_item)
         except Exception:
@@ -1429,6 +1485,13 @@ class ChatTable:
 
     async def delete_chat_by_id(self, id: str, db: Optional[AsyncSession] = None) -> bool:
         try:
+            # Index deletion (Paras customizations)
+            try:
+                if meilisearch_service := get_meilisearch_service():
+                    await meilisearch_service.delete_chat_from_index(id)
+            except Exception as e:
+                log.error(f"Failed to delete chat {id} from MeiliSearch index: {e}")
+
             async with get_async_db_context(db) as db:
                 await db.execute(update(AutomationRun).filter_by(chat_id=id).values(chat_id=None))
                 await db.execute(delete(ChatMessage).filter_by(chat_id=id))
@@ -1441,6 +1504,13 @@ class ChatTable:
 
     async def delete_chat_by_id_and_user_id(self, id: str, user_id: str, db: Optional[AsyncSession] = None) -> bool:
         try:
+            # Index deletion (Paras customizations)
+            try:
+                if meilisearch_service := get_meilisearch_service():
+                    await meilisearch_service.delete_chat_from_index(id)
+            except Exception as e:
+                log.error(f"Failed to delete chat {id} from MeiliSearch index: {e}")
+
             async with get_async_db_context(db) as db:
                 await db.execute(update(AutomationRun).filter_by(chat_id=id).values(chat_id=None))
                 await db.execute(delete(ChatMessage).filter_by(chat_id=id))
@@ -1454,9 +1524,20 @@ class ChatTable:
     async def delete_chats_by_user_id(self, user_id: str, db: Optional[AsyncSession] = None) -> bool:
         try:
             async with get_async_db_context(db) as db:
+                # Get all chat IDs before deletion for index cleanup (Paras customizations)
+                result = await db.execute(select(Chat.id).filter_by(user_id=user_id))
+                chat_ids = [row[0] for row in result.all()]
+
+                # Delete from MeiliSearch index
+                try:
+                    if meilisearch_service := get_meilisearch_service():
+                        for chat_id in chat_ids:
+                            await meilisearch_service.delete_chat_from_index(chat_id)
+                except Exception as e:
+                    log.error(f"Failed to delete user {user_id} chats from MeiliSearch index: {e}")
+
                 await self.delete_shared_chats_by_user_id(user_id, db=db)
 
-                chat_id_subquery = select(Chat.id).filter_by(user_id=user_id).scalar_subquery()
                 await db.execute(
                     update(AutomationRun)
                     .filter(AutomationRun.chat_id.in_(select(Chat.id).filter_by(user_id=user_id)))

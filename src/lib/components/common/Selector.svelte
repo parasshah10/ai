@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { getContext } from 'svelte';
 	import ChevronDown from '../icons/ChevronDown.svelte';
 	import Check from '../icons/Check.svelte';
 	import Search from '../icons/Search.svelte';
 	import Select from './Select.svelte';
 
+	const i18n = getContext('i18n');
+
 	export let value = '';
 	export let placeholder = $i18n.t('Select a model');
 	export let searchEnabled = true;
 	export let searchPlaceholder = $i18n.t('Search a model');
+	export let align: 'start' | 'end' = 'start';
 
 	export let items = [
 		{ value: 'mango', label: 'Mango' },
@@ -30,8 +34,9 @@
 	bind:this={selectRef}
 	{items}
 	{placeholder}
+	{align}
 	triggerClass="relative w-full"
-	contentClass="w-full rounded-lg bg-white dark:bg-gray-900 dark:text-white shadow-lg border border-gray-300/30 dark:border-gray-700/40 outline-hidden"
+	contentClass="min-w-[200px] max-w-[80vw] rounded-lg bg-white dark:bg-gray-900 dark:text-white shadow-lg border border-gray-300/30 dark:border-gray-700/40 outline-hidden"
 	onClose={() => {
 		searchValue = '';
 	}}

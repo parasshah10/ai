@@ -1,0 +1,18 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Zellij",
+            "type": "shell",
+            "command": "source .env 2>/dev/null && [ \"$USE_ZELLIJ\" = \"true\" ] && zellij attach $APP_NAME --create || true",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            },
+            "runOptions": {
+                "runOn": "folderOpen"
+            }
+        }
+    ]
+}

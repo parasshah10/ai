@@ -2,6 +2,7 @@
 	import dayjs from 'dayjs';
 	import { toast } from 'svelte-sonner';
 	import { tick, getContext, onMount } from 'svelte';
+	import { updateFileNameInHistory } from '$lib/utils/history';
 
 	import { models, settings } from '$lib/stores';
 	import { user as _user } from '$lib/stores';
@@ -36,6 +37,7 @@
 
 	export let editMessage: Function;
 	export let deleteMessage: Function;
+	export let updateChat: Function;
 
 	export let isFirstMessage: boolean;
 	export let readOnly: boolean;
@@ -222,6 +224,20 @@
 										type={file.type}
 										size={file?.size}
 										small={true}
+										on:save={(e) => {
+											const updatedFile = e.detail;
+											const fileId = updatedFile.id;
+											const newFilename = updatedFile.file.filename;
+
+											// Update all instances of this file in the entire history
+											history.messages = updateFileNameInHistory(
+												history,
+												fileId,
+												newFilename,
+												updatedFile.file.data?.content
+											);
+											updateChat(updatedFile);
+										}}
 									/>
 								{/if}
 							</div>
@@ -290,6 +306,29 @@
 										}}
 										on:click={() => {
 											console.log(file);
+										}}
+										on:save={(e) => {
+											const updatedFile = e.detail;
+											const fileId = updatedFile.id;
+											const newFilename = updatedFile.file.filename;
+
+											// Update local files state (editing mode)
+											if (editedFiles[fileIdx] && editedFiles[fileIdx].id === fileId) {
+												editedFiles[fileIdx].name = newFilename;
+												if (editedFiles[fileIdx].meta) {
+													editedFiles[fileIdx].meta.name = newFilename;
+												}
+												editedFiles = [...editedFiles];
+											}
+
+											// Update all instances of this file in the entire history
+											history.messages = updateFileNameInHistory(
+												history,
+												fileId,
+												newFilename,
+												updatedFile.file.data?.content
+											);
+											updateChat(updatedFile);
 										}}
 									/>
 								{/if}
@@ -378,6 +417,7 @@
 							{#if message.content}
 								<Markdown
 									id={`${chatId}-${message.id}`}
+									role={message.role}
 									content={message.content}
 									{editCodeBlock}
 									{topPadding}

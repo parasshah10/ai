@@ -1,6 +1,40 @@
 import { WEBUI_API_BASE_URL } from '$lib/constants';
 import { getTimeRange } from '$lib/utils';
 
+export interface MessageSearchResult {
+	id: string;
+	chatId: string;
+	messageId: string;
+	content: string;
+	branchPath: string[];
+	_formatted?: { content: string };
+	_matchesPosition?: any;
+	_rankingScore?: number;
+}
+
+export interface SearchResponse {
+	hits: MessageSearchResult[];
+	totalHits: number;
+	processingTimeMs: number;
+	page: number;
+	limit: number;
+	query: string;
+}
+
+export interface Chat {
+	id: string;
+	title: string;
+	updated_at: number;
+	created_at: number;
+	user_id: string;
+	chat: object;
+	share_id?: string;
+	archived: boolean;
+	pinned?: boolean;
+	meta?: object;
+	folder_id?: string;
+}
+
 export const createNewChat = async (token: string, chat: object, folderId: string | null) => {
 	let error = null;
 
@@ -146,7 +180,7 @@ export const getChatList = async (
 		return [];
 	}
 
-	return res.map((chat) => ({
+	return res.map((chat: Chat) => ({
 		...chat,
 		time_range: getTimeRange(chat.updated_at)
 	}));
@@ -200,7 +234,7 @@ export const getChatListByUserId = async (
 		throw error;
 	}
 
-	return res.map((chat) => ({
+	return res.map((chat: Chat) => ({
 		...chat,
 		time_range: getTimeRange(chat.updated_at)
 	}));
@@ -249,7 +283,7 @@ export const getArchivedChatList = async (
 		throw error;
 	}
 
-	return res.map((chat) => ({
+	return res.map((chat: Chat) => ({
 		...chat,
 		time_range: getTimeRange(chat.updated_at)
 	}));
@@ -363,7 +397,7 @@ export const getChatListBySearchText = async (token: string, text: string, page:
 		throw error;
 	}
 
-	return res.map((chat) => ({
+	return res.map((chat: Chat) => ({
 		...chat,
 		time_range: getTimeRange(chat.updated_at)
 	}));
@@ -560,7 +594,7 @@ export const getPinnedChatList = async (token: string = '') => {
 		throw error;
 	}
 
-	return res.map((chat) => ({
+	return res.map((chat: Chat) => ({
 		...chat,
 		time_range: getTimeRange(chat.updated_at)
 	}));
@@ -597,7 +631,7 @@ export const getChatListByTagName = async (token: string = '', tagName: string) 
 		throw error;
 	}
 
-	return res.map((chat) => ({
+	return res.map((chat: Chat) => ({
 		...chat,
 		time_range: getTimeRange(chat.updated_at)
 	}));
@@ -1251,6 +1285,49 @@ export const deleteAllChats = async (token: string) => {
 	return res;
 };
 
+export const searchMessages = async (
+	token: string,
+	query: string,
+	page: number = 1,
+	sortBy: string = 'relevance',
+	filters: any = {},
+	chatId?: string
+): Promise<SearchResponse> => {
+	const params = new URLSearchParams({
+		q: query,
+		page: page.toString(),
+		sort_by: sortBy
+	});
+
+	if (chatId) {
+		params.append('chat_id', chatId);
+	}
+
+	// Add filter parameters
+	if (filters.role) {
+		params.append('role', filters.role);
+	}
+	if (filters.timestamp) {
+		params.append('timestamp_gte', filters.timestamp.toString());
+	}
+	if (filters.tags && filters.tags.length > 0) {
+		params.append('tags', filters.tags.join(','));
+	}
+	if (filters.folderId) {
+		params.append('folder_id', filters.folderId);
+	}
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/chats/search/messages?${params}`, {
+		headers: { Authorization: `Bearer ${token}` }
+	});
+
+	if (!res.ok) {
+		throw await res.json();
+	}
+
+	return res.json();
+};
+
 export const archiveAllChats = async (token: string) => {
 	let error = null;
 
@@ -1282,6 +1359,7 @@ export const archiveAllChats = async (token: string) => {
 
 	return res;
 };
+
 export const exportChatStats = async (token: string, page: number = 1, params: object = {}) => {
 	let error = null;
 
@@ -1381,4 +1459,21 @@ export const downloadChatStats = async (
 	}
 
 	return [res, controller];
+};
+
+export const reindexUserChats = async (token: string) => {
+	const res = await fetch(`${WEBUI_API_BASE_URL}/chats/search/reindex`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			authorization: `Bearer ${token}`
+		}
+	});
+
+	if (!res.ok) {
+		throw await res.json();
+	}
+
+	return res.json();
 };

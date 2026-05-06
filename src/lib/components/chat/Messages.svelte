@@ -82,6 +82,17 @@
 	let pendingRebuild = null;
 	let lastCurrentId = null;
 
+	// Expose function to load messages to a specific count (used by minimap) (Paras customizations)
+	export const loadMessagesToCount = async (count: number) => {
+		if (messagesCount === null || count <= messagesCount) {
+			return;
+		}
+		messagesLoading = true;
+		messagesCount = count;
+		await tick();
+		messagesLoading = false;
+	};
+
 	const buildMessages = () => {
 		let _messages = [];
 
@@ -143,7 +154,7 @@
 		element.scrollTop = element.scrollHeight;
 	};
 
-	const updateChat = async () => {
+	const updateChat = async (updatedFile = null) => {
 		if (!$temporaryChatEnabled) {
 			history = history;
 			await tick();
@@ -152,8 +163,9 @@
 				messages: messages
 			});
 
-			currentChatPage.set(1);
-			await chats.set(await getChatList(localStorage.token, $currentChatPage));
+			if (updatedFile) {
+				dispatch('save', updatedFile);
+			}
 		}
 	};
 
@@ -389,13 +401,13 @@
 		await chatActionHandler(chatId, actionId, message.model, message.id, event);
 	};
 
-	const saveMessage = async (messageId, message) => {
+	const saveMessage = async (messageId, message, updatedFile = null) => {
 		if (!history.messages?.[messageId]) {
 			return;
 		}
 
 		history.messages[messageId] = message;
-		await updateChat();
+		await updateChat(updatedFile);
 	};
 
 	const deleteMessage = async (messageId) => {

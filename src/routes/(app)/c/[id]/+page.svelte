@@ -4,4 +4,4 @@
 	import Chat from '$lib/components/chat/Chat.svelte';
 </script>
 
-<Chat chatIdProp={$page.params.id} />
+<Chat chatIdProp={$page.params.id} messageId={$page.url.searchParams.get('mid')} />

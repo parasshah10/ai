@@ -18,6 +18,15 @@ from pydantic import BaseModel
 from sqlalchemy import text
 
 from typing import Optional
+from contextlib import asynccontextmanager
+from typing import Optional
+import cloudinary
+import cloudinary.uploader
+from PIL import Image
+import pillow_heif
+import io
+pillow_heif.register_avif_opener()
+import math
 from aiocache import cached
 import aiohttp
 import anyio.to_thread
@@ -587,6 +596,10 @@ from open_webui.tasks import (
 )  # Import from tasks.py
 
 from open_webui.utils.redis import get_sentinels_from_env
+from open_webui.services.meilisearch_service import (
+    initialize_meilisearch_service,
+    shutdown_meilisearch_service,
+)
 
 
 from open_webui.constants import ERROR_MESSAGES, TASKS
@@ -680,6 +693,9 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(scheduler_worker_loop(app))
 
+    # Initialize MeiliSearch Service
+    initialize_meilisearch_service()
+
     if app.state.config.ENABLE_BASE_MODELS_CACHE:
         try:
             await get_all_models(
@@ -740,6 +756,9 @@ async def lifespan(app: FastAPI):
     from open_webui.utils.session_pool import close_session
 
     await close_session()
+
+    # Shutdown MeiliSearch Service
+    shutdown_meilisearch_service()
 
     if hasattr(app.state, 'redis_task_command_listener'):
         app.state.redis_task_command_listener.cancel()
@@ -2025,6 +2044,65 @@ async def chat_completion(
         metadata['message_id'] = list(message_ids.values())[0]
         return await process_chat(request, form_data, user, metadata, model, tasks)
 
+@app.post("/api/upload/cloudinary")
+async def upload_to_cloudinary(
+    file: UploadFile = File(...),
+    user=Depends(get_verified_user)
+):
+    try:
+#         def determine_avif_quality(img):
+#             """
+#             AVIF quality mapping:
+#             - 90% quality for images <= 2MP
+#             - Quality decreases for images larger than 2MP
+#             - Floor at 50% for very large images
+#             """
+#             width, height = img.size
+#             pixels = width * height
+#             mp = pixels / 1_000_000  # Convert pixels to megapixels
+#
+#             if mp <= 2:
+#                 quality = 90  # Max quality for images up to 2MP
+#             else:
+#                 # Decrease quality inversely proportional to the square root of the image size
+#                 quality = 90 * (2 / mp)**0.5
+#                 quality = max(50, quality)  # Ensure quality doesn't drop below 50%
+#             return int(quality)
+
+        # Read the file contents
+        contents = await file.read()
+
+        # Check if file is WebP or AVIF
+        if file.filename.lower().endswith('.webp') or file.filename.lower().endswith('.avif'):
+            # Upload original WebP or AVIF file without conversion
+            upload_result = cloudinary.uploader.upload(
+                contents,
+                resource_type="image"
+            )
+        else:
+            # For other file types, convert to WebP
+            img = Image.open(io.BytesIO(contents))
+
+            # Save to memory as WebP
+            webp_buffer = io.BytesIO()
+            img.save(webp_buffer, format="WEBP", quality=92)
+            webp_buffer.seek(0)
+
+            # Upload converted WebP
+            upload_result = cloudinary.uploader.upload(
+                webp_buffer,
+                resource_type="image"
+            )
+
+        return {
+            "url": upload_result['secure_url'],
+            "public_id": upload_result['public_id']
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 # Alias for chat_completion (Legacy)
 generate_chat_completions = chat_completion

@@ -48,7 +48,7 @@
 </script>
 
 {#if item}
-	<FileItemModal bind:show={showModal} bind:item {edit} />
+	<FileItemModal bind:show={showModal} bind:item {edit} on:save />
 {/if}
 
 <button

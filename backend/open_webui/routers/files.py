@@ -35,6 +35,7 @@ from open_webui.models.files import (
     FileModel,
     FileModelResponse,
     Files,
+    FileUpdateForm,
 )
 from open_webui.models.chats import Chats
 from open_webui.models.knowledge import Knowledges
@@ -504,6 +505,42 @@ async def get_file_process_status(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+
+############################
+# Update File By Id
+############################
+
+
+@router.post('/{id}/update', response_model=Optional[FileModel])
+async def update_file_by_id(
+    id: str,
+    form_data: FileUpdateForm,
+    user=Depends(get_verified_user),
+    db: AsyncSession = Depends(get_async_session),
+):
+    file = await Files.get_file_by_id(id, db=db)
+
+    if not file:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=ERROR_MESSAGES.NOT_FOUND,
+        )
+
+    if file.user_id == user.id or user.role == 'admin' or await has_access_to_file(id, 'write', user, db=db):
+        # If filename is provided, also update meta.name for consistency
+        if form_data.filename:
+            if form_data.meta is None:
+                form_data.meta = {}
+            form_data.meta['name'] = form_data.filename
+
+        file = await Files.update_file_by_id(id, form_data, db=db)
+        return file
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=ERROR_MESSAGES.ACCESS_PROHIBITED,
         )
 
 

@@ -29,6 +29,7 @@ from open_webui.utils.misc import is_string_allowed
 from open_webui.models.oauth_sessions import OAuthSessions
 from open_webui.models.chats import Chats
 from open_webui.models.folders import Folders
+from open_webui.models.files import Files
 from open_webui.models.users import Users
 from open_webui.socket.main import (
     get_event_call,
@@ -1735,10 +1736,13 @@ async def add_file_context(messages: list, chat_id: str, user) -> list:
     stored_user_messages = [m for m in stored_messages if m.get('role') == 'user']
 
     for message, stored_message in zip(user_messages, stored_user_messages):
+        # Paras customizations: Filter out non-image files to prevent UUID leakage.
+        # Images still need URLs for vision models, but text files now use our 
+        # elegant re-hydration logic in the main handler.
         files_with_urls = [
             file
             for file in stored_message.get('files', [])
-            if file.get('url') and not file.get('url').startswith('data:')
+            if file.get('url') and not file.get('url').startswith('data:') and (file.get('type') == 'image' or (file.get('content_type') or '').startswith('image/'))
         ]
         if not files_with_urls:
             continue
@@ -1953,107 +1957,180 @@ async def chat_completion_files_handler(
     __event_emitter__ = extra_params['__event_emitter__']
     sources = []
 
-    if files := body.get('metadata', {}).get('files', None):
-        # Check if all files are in full context mode
-        all_full_context = all(item.get('context') == 'full' for item in files)
+    # Paras customizations: Universal History Content Injector
+    # We inject file content into the specific message turns where they were attached.
+    # This ensures the model has full context without redundant 'Double Injection' or 'Ugly Citations'.
+    messages = body.get('messages', [])
+    chat_id = body.get('metadata', {}).get('chat_id')
+    
+    # 1. RE-HYDRATE HISTORY: Fetch full history and inject content into past messages
+    if chat_id and not chat_id.startswith('local:'):
+        chat = await Chats.get_chat_by_id_and_user_id(chat_id, user.id)
+        if chat:
+            history = chat.chat.get('history', {})
+            stored_messages = get_message_list(history.get('messages', {}), history.get('currentId'))
+            
+            # Match current payload messages with stored messages
+            user_messages = [m for m in messages if m.get('role') == 'user']
+            stored_user_messages = [m for m in stored_messages if m.get('role') == 'user']
+            
+            for message, stored_message in zip(user_messages, stored_user_messages):
+                stored_files = stored_message.get('files', [])
+                full_context_files = [f for f in stored_files if f.get('context') == 'full']
+                
+                if full_context_files:
+                    try:
+                        attached_sources = await get_sources_from_items(
+                            request=request,
+                            items=full_context_files,
+                            queries=[""],
+                            embedding_function=lambda query, prefix: request.app.state.EMBEDDING_FUNCTION(query, prefix=prefix, user=user),
+                            k=1,
+                            reranking_function=None,
+                            k_reranker=1,
+                            r=0.0,
+                            hybrid_bm25_weight=0.0,
+                            hybrid_search=False,
+                            full_context=True,
+                            user=user,
+                        )
 
-        queries = []
-        if not all_full_context:
+                        if attached_sources:
+                            file_blocks = []
+                            for src in attached_sources:
+                                name = (src.get('source') or {}).get('name') or "File"
+                                content = "\n".join(src.get('document') or [])
+                                file_blocks.append(f"[File: {name}]\n```\n{content}\n```")
+                            
+                            injection = "\n\n" + "\n\n".join(file_blocks)
+                            
+                            content = message.get('content', '')
+                            if isinstance(content, list):
+                                text_part = next((p for p in content if p.get('type') == 'text'), None)
+                                if text_part:
+                                    text_part['text'] = text_part.get('text', '') + injection
+                                else:
+                                    content.append({'type': 'text', 'text': injection})
+                            else:
+                                message['content'] = str(content) + injection
+                    except Exception as e:
+                        log.debug(f"Error re-hydrating history turn: {e}")
+
+    # 2. PROCESS LATEST ATTACHMENTS: Handle files newly attached to the current request
+    new_files = body.get('metadata', {}).get('files', [])
+    if new_files:
+        full_context_files = [f for f in new_files if f.get('context') == 'full']
+        other_files = [f for f in new_files if f.get('context') != 'full']
+
+        if full_context_files:
             try:
-                queries_response = await generate_queries(
-                    request,
-                    {
-                        'model': body['model'],
-                        'messages': body['messages'],
-                        'type': 'retrieval',
-                        'chat_id': body.get('metadata', {}).get('chat_id'),
-                    },
-                    user,
+                attached_sources = await get_sources_from_items(
+                    request=request,
+                    items=full_context_files,
+                    queries=[""],
+                    embedding_function=lambda query, prefix: request.app.state.EMBEDDING_FUNCTION(query, prefix=prefix, user=user),
+                    k=1,
+                    reranking_function=None,
+                    k_reranker=1,
+                    r=0.0,
+                    hybrid_bm25_weight=0.0,
+                    hybrid_search=False,
+                    full_context=True,
+                    user=user,
                 )
-                queries_response = queries_response['choices'][0]['message']['content']
 
-                try:
-                    bracket_start = queries_response.rfind('{')
-                    bracket_end = queries_response.rfind('}') + 1
+                if attached_sources:
+                    last_user_msg = get_last_user_message_item(messages)
+                    if last_user_msg:
+                        file_blocks = []
+                        for src in attached_sources:
+                            name = (src.get('source') or {}).get('name') or "File"
+                            content = "\n".join(src.get('document') or [])
+                            file_blocks.append(f"[File: {name}]\n```\n{content}\n```")
+                        
+                        injection = "\n\n" + "\n\n".join(file_blocks)
+                        
+                        # Prevent double injection if we already did it in the history loop
+                        if injection not in str(last_user_msg.get('content', '')):
+                            curr_content = last_user_msg.get('content', '')
+                            if isinstance(curr_content, list):
+                                text_part = next((p for p in curr_content if p.get('type') == 'text'), None)
+                                if text_part:
+                                    text_part['text'] = text_part.get('text', '') + injection
+                                else:
+                                    curr_content.append({'type': 'text', 'text': injection})
+                            else:
+                                last_user_msg['content'] = str(curr_content) + injection
 
-                    if bracket_start == -1 or bracket_end == -1:
-                        raise Exception('No JSON object found in the response')
+            except Exception as e:
+                log.exception(f"Error injecting latest files: {e}")
 
+        if not other_files:
+            return body, {'sources': []}
+        
+        # --- Fallback to official RAG Logic for Partial Context Files ---
+        files_to_process = other_files
+        all_full_context = False 
+        queries = []
+        try:
+            queries_response = await generate_queries(
+                request,
+                {
+                    'model': body['model'],
+                    'messages': body['messages'],
+                    'type': 'retrieval',
+                    'chat_id': body.get('metadata', {}).get('chat_id'),
+                },
+                user,
+            )
+            queries_response = queries_response['choices'][0]['message']['content']
+
+            try:
+                bracket_start = queries_response.rfind('{')
+                bracket_end = queries_response.rfind('}') + 1
+                if bracket_start != -1 and bracket_end != -1:
                     queries_response = queries_response[bracket_start:bracket_end]
                     queries_response = json.loads(queries_response)
-                except Exception as e:
+                else:
                     queries_response = {'queries': [queries_response]}
-
-                queries = queries_response.get('queries', [])
             except Exception:
-                pass
+                queries_response = {'queries': [queries_response]}
 
-            await __event_emitter__(
-                {
-                    'type': 'status',
-                    'data': {
-                        'action': 'queries_generated',
-                        'queries': queries,
-                        'done': False,
-                    },
-                }
-            )
+            queries = queries_response.get('queries', [])
+        except Exception:
+            pass
 
-        if len(queries) == 0:
+        if not queries:
             queries = [get_last_user_message(body['messages']) or '']
 
         try:
-            # Directly await async get_sources_from_items (no thread needed - fully async now)
             sources = await get_sources_from_items(
                 request=request,
-                items=files,
+                items=files_to_process,
                 queries=queries,
-                embedding_function=lambda query, prefix: request.app.state.EMBEDDING_FUNCTION(
-                    query, prefix=prefix, user=user
-                ),
+                embedding_function=lambda query, prefix: request.app.state.EMBEDDING_FUNCTION(query, prefix=prefix, user=user),
                 k=request.app.state.config.TOP_K,
-                reranking_function=(
-                    (lambda query, documents: request.app.state.RERANKING_FUNCTION(query, documents, user=user))
-                    if request.app.state.RERANKING_FUNCTION
-                    else None
-                ),
+                reranking_function=((lambda query, docs: request.app.state.RERANKING_FUNCTION(query, docs, user=user)) if request.app.state.RERANKING_FUNCTION else None),
                 k_reranker=request.app.state.config.TOP_K_RERANKER,
                 r=request.app.state.config.RELEVANCE_THRESHOLD,
                 hybrid_bm25_weight=request.app.state.config.HYBRID_BM25_WEIGHT,
                 hybrid_search=request.app.state.config.ENABLE_RAG_HYBRID_SEARCH,
-                full_context=all_full_context or request.app.state.config.RAG_FULL_CONTEXT,
+                full_context=request.app.state.config.RAG_FULL_CONTEXT,
                 user=user,
             )
         except Exception as e:
             log.exception(e)
 
-        log.debug(f'rag_contexts:sources: {sources}')
-
-        unique_ids = set()
-        for source in sources or []:
-            if not source or len(source.keys()) == 0:
-                continue
-
-            documents = source.get('document') or []
-            metadatas = source.get('metadata') or []
-            src_info = source.get('source') or {}
-
-            for index, _ in enumerate(documents):
-                metadata = metadatas[index] if index < len(metadatas) else None
-                _id = (metadata or {}).get('source') or (src_info or {}).get('id') or 'N/A'
-                unique_ids.add(_id)
-
-        sources_count = len(unique_ids)
-        await __event_emitter__(
-            {
+        if sources:
+            unique_ids = set()
+            for source in sources:
+                for meta in source.get('metadata', []):
+                    unique_ids.add(meta.get('source') or 'N/A')
+            
+            await __event_emitter__({
                 'type': 'status',
-                'data': {
-                    'action': 'sources_retrieved',
-                    'count': sources_count,
-                    'done': True,
-                },
-            }
-        )
+                'data': {'action': 'sources_retrieved', 'count': len(unique_ids), 'done': True},
+            })
 
     return body, {'sources': sources}
 
@@ -2295,8 +2372,12 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                                 if f.get('url')
                             ],
                         ]
-                # Strip files field — it's been incorporated into content
-                message.pop('files', None)
+                # Remove only image files that have been incorporated into content.
+                # Preserve documents/text files so they remain available for retrieval in the history.
+                if message.get('files'):
+                    message['files'] = [f for f in message['files'] if f not in image_files]
+                    if not message['files']:
+                        message.pop('files', None)
 
     # Process messages with OR-aligned output items for clean LLM messages
     form_data['messages'] = process_messages_with_output(form_data.get('messages', []))
@@ -2573,9 +2654,35 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                         files = [f for f in files if f.get('id', None) != folder_id]
                         files = [*files, *folder.data['files']]
 
-        # files = [*files, *[{"type": "url", "url": url, "name": url} for url in urls]]
-        # Remove duplicate files based on their content
+        # Collect files from history messages to ensure persistent retrieval after reload
+        history_files = []
+        for message in form_data.get('messages', []):
+            if message.get('files'):
+                history_files.extend(message.get('files'))
+
+        if history_files:
+            files.extend(history_files)
+
+        # Remove duplicate files based on their ID/type combo
         files = list({json.dumps(f, sort_keys=True): f for f in files}.values())
+
+        # Resolve current filenames from database to ensure metadata is up-to-date
+        file_ids = [f.get('id') for f in files if f.get('type') == 'file' and f.get('id')]
+        if file_ids:
+            try:
+                db_files = await Files.get_files_by_ids(file_ids)
+                db_files_dict = {f.id: f for f in db_files}
+
+                for file in files:
+                    if file.get('type') == 'file' and file.get('id') in db_files_dict:
+                        db_file = db_files_dict[file['id']]
+                        file['name'] = db_file.filename
+                        if 'meta' in file:
+                            file['meta']['name'] = db_file.filename
+                        else:
+                            file['meta'] = {'name': db_file.filename}
+            except Exception as e:
+                log.error(f'Error resolving filenames in middleware: {e}')
 
     metadata = {
         **metadata,
@@ -2849,6 +2956,13 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     # If context is not empty, insert it into the messages
     if sources and prompt:
         form_data['messages'] = apply_source_context_to_messages(request, form_data['messages'], sources, prompt)
+
+    # Final sanitization: strip non-standard 'files' field from individual messages
+    # before they are sent to external LLM providers (e.g. OpenAI/Anthropic).
+    # This prevents API errors while having already allowed the retrieval system to use them.
+    for message in form_data.get('messages', []):
+        if 'files' in message:
+            message.pop('files', None)
 
     # If there are citations, add them to the data_items
     sources = [
@@ -4582,7 +4696,7 @@ async def streaming_chat_response_handler(response, ctx):
                         results.append(
                             {
                                 'tool_call_id': tool_call_id,
-                                'content': str(tool_result) if tool_result else '',
+                                'content': str(tool_result) if tool_result is not None else '',
                                 **({'files': tool_result_files} if tool_result_files else {}),
                                 **({'embeds': tool_result_embeds} if tool_result_embeds else {}),
                             }
@@ -4757,6 +4871,16 @@ async def streaming_chat_response_handler(response, ctx):
                                             *[{'type': 'image_url', 'image_url': {'url': url}} for url in image_urls],
                                         ],
                                     }
+                                )
+
+                        # Clean messages before API call (Paras customizations)
+                        for msg in new_form_data["messages"]:
+                            if "content" in msg and isinstance(msg["content"], str):
+                                msg["content"] = re.sub(
+                                    r"<details[^>]*>.*?</details>",
+                                    "",
+                                    msg["content"],
+                                    flags=re.S,
                                 )
 
                         res = await generate_chat_completion(

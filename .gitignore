@@ -5,7 +5,9 @@ node_modules
 /build
 /.svelte-kit
 /package
+.myenv/
 .env
+.webui_secret_key
 .env.*
 !.env.example
 vite.config.js.timestamp-*

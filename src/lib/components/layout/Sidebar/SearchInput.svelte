@@ -241,6 +241,7 @@
 						optionElement.click();
 						return;
 					}
+
 				}
 
 				if (e.key === 'ArrowUp') {

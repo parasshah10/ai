@@ -4,6 +4,7 @@
 
 	import { createEventDispatcher, onDestroy } from 'svelte';
 	import { onMount, tick, getContext } from 'svelte';
+	import { updateFileNameInHistory } from '$lib/utils/history';
 	import type { Writable } from 'svelte/store';
 	import type { i18n as i18nType, t } from 'i18next';
 
@@ -682,6 +683,20 @@
 												type={file.type}
 												size={file?.size}
 												small={true}
+												on:save={(e) => {
+													const updatedFile = e.detail;
+													const fileId = updatedFile.id;
+													const newFilename = updatedFile.file.filename;
+
+													// Update all instances of this file in the entire history
+													history.messages = updateFileNameInHistory(
+														history,
+														fileId,
+														newFilename,
+														updatedFile.file.data?.content
+													);
+													updateChat(updatedFile);
+												}}
 											/>
 										{/if}
 									</div>
@@ -788,6 +803,10 @@
 								<!-- unless message.error === true which is legacy error handling, where the error message is stored in message.content -->
 								<ContentRenderer
 									id={`${chatId}-${message.id}`}
+									messageId={message.id}
+									role={message.role}
+									{history}
+									{selectedModels}
 									content={message.content}
 									sources={message.sources}
 									floatingButtons={message?.done &&
@@ -797,9 +816,7 @@
 									preview={!readOnly}
 									{editCodeBlock}
 									{topPadding}
-									done={($settings?.chatFadeStreamingText ?? true)
-										? (message?.done ?? false)
-										: true}
+									done={($settings?.chatFadeStreamingText ?? true) ? (message?.done ?? false) : true}
 									{model}
 									onTaskClick={async (e) => {
 										console.log(e);
@@ -815,11 +832,15 @@
 										setInputText(text);
 									}}
 									onSave={({ raw, oldContent, newContent }) => {
-										history.messages[message.id].content = history.messages[
-											message.id
-										].content.replace(raw, raw.replace(oldContent, newContent));
+										history.messages[message.id].content = history.messages[message.id].content.replace(
+											raw,
+											raw.replace(oldContent, newContent)
+										);
 
-										updateChat();
+										onSave();
+									}}
+									onUpdate={(token) => {
+										console.log(token);
 									}}
 								/>
 							{/if}

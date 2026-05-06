@@ -403,10 +403,16 @@
 	$: maxVisibleItems = Math.floor(containerWidth / 5); // 2px width + 0.5px gap
 
 	const handleKeyDown = (e) => {
+		const isCtrlPressed = e.ctrlKey || e.metaKey; // metaKey is for Cmd key on Mac
+
 		if (e.key === 'Escape') {
 			e.preventDefault();
 			stopRecording();
 			onCancel();
+		} else if (recording && !loading && isCtrlPressed && e.key.toLowerCase() === 'e') {
+			// Use same shortcut (Ctrl/Cmd + E) to confirm recording (Paras customizations)
+			e.preventDefault();
+			confirmRecording();
 		}
 	};
 
@@ -433,6 +439,7 @@
 		});
 
 		resizeObserver.observe(document.body);
+		window.addEventListener('keydown', handleKeyDown);
 	});
 
 	onDestroy(() => {
@@ -441,6 +448,7 @@
 		releaseWakeLock();
 		// remove resize observer
 		resizeObserver.disconnect();
+		window.removeEventListener('keydown', handleKeyDown);
 	});
 </script>
 

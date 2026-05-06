@@ -124,15 +124,40 @@ if 'cuda_error' in locals():
     log.exception(cuda_error)
     del cuda_error
 
-SRC_LOG_LEVELS = {}  # Legacy variable, do not remove
+log_sources = [
+    "AUDIO",
+    "COMFYUI",
+    "CONFIG",
+    "DB",
+    "IMAGES",
+    "MAIN",
+    "MODELS",
+    "OLLAMA",
+    "OPENAI",
+    "RAG",
+    "WEBHOOK",
+    "SOCKET",
+    "OAUTH",
+]
 
-WEBUI_NAME = os.environ.get('WEBUI_NAME', 'Open WebUI')
-if WEBUI_NAME != 'Open WebUI':
-    WEBUI_NAME += ' (Open WebUI)'
+SRC_LOG_LEVELS = {}
 
-WEBUI_FAVICON_URL = 'https://openwebui.com/favicon.png'
+for source in log_sources:
+    log_env_var = source + "_LOG_LEVEL"
+    SRC_LOG_LEVELS[source] = os.environ.get(log_env_var, "").upper()
+    if SRC_LOG_LEVELS[source] not in logging.getLevelNamesMapping():
+        SRC_LOG_LEVELS[source] = GLOBAL_LOG_LEVEL
+    log.info(f"{log_env_var}: {SRC_LOG_LEVELS[source]}")
 
-TRUSTED_SIGNATURE_KEY = os.environ.get('TRUSTED_SIGNATURE_KEY', '')
+log.setLevel(SRC_LOG_LEVELS["CONFIG"])
+
+WEBUI_NAME = os.environ.get("WEBUI_NAME", "Open WebUI")
+# if WEBUI_NAME != "Open WebUI":
+#     WEBUI_NAME += " (Open WebUI)"
+
+WEBUI_FAVICON_URL = "https://openwebui.com/favicon.png"
+
+TRUSTED_SIGNATURE_KEY = os.environ.get("TRUSTED_SIGNATURE_KEY", "")
 
 ####################################
 # ENV (dev,test,prod)

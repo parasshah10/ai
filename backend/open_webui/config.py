@@ -3124,6 +3124,10 @@ RAG_OLLAMA_API_KEY = PersistentConfig(
 )
 
 
+# MeiliSearch Configuration
+MEILISEARCH_URL = os.getenv("MEILISEARCH_URL", None)
+MEILISEARCH_API_KEY = os.getenv("MEILISEARCH_API_KEY", None)
+
 ENABLE_RAG_LOCAL_WEB_FETCH = os.getenv('ENABLE_RAG_LOCAL_WEB_FETCH', 'False').lower() == 'true'
 
 
@@ -3142,7 +3146,6 @@ else:
     web_fetch_filter_list = [item.strip() for item in web_fetch_filter_list.split(',') if item.strip()]
 
 WEB_FETCH_FILTER_LIST = list(set(DEFAULT_WEB_FETCH_FILTER_LIST + web_fetch_filter_list))
-
 
 YOUTUBE_LOADER_LANGUAGE = PersistentConfig(
     'YOUTUBE_LOADER_LANGUAGE',

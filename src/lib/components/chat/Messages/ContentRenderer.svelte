@@ -16,6 +16,7 @@
 	import { createMessagesList } from '$lib/utils';
 
 	export let id;
+	export let role = 'assistant';
 	export let content;
 
 	export let history;
@@ -176,6 +177,7 @@
 <div bind:this={contentContainerElement}>
 	<Markdown
 		{id}
+		{role}
 		content={model?.info?.meta?.capabilities?.citations == false
 			? content.replace(/\s*(\[(?:\d+(?:#[^,\]\s]+)?(?:,\s*\d+(?:#[^,\]\s]+)?)*)\])+/g, '')
 			: content}

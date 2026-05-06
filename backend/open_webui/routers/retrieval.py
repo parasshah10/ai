@@ -1680,7 +1680,9 @@ async def process_file(
             )
             hash = calculate_sha256_string(text_content)
 
-            if request.app.state.config.BYPASS_EMBEDDING_AND_RETRIEVAL:
+            is_full_context = file.meta.get('data', {}).get('context') == 'full'
+
+            if request.app.state.config.BYPASS_EMBEDDING_AND_RETRIEVAL or is_full_context:
                 await Files.update_file_data_by_id(file.id, {'status': 'completed'}, db=db)
                 await Files.update_file_hash_by_id(file.id, hash, db=db)
                 return {

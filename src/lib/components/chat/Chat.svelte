@@ -60,6 +60,7 @@
 		createMessagesList,
 		getPromptVariables,
 		processDetails,
+		convertMessagesForAPI,
 		removeAllDetails,
 		getCodeBlockContents,
 		isYoutubeUrl,
@@ -94,6 +95,7 @@
 	import { createOpenAITextStream } from '$lib/apis/streaming';
 	import { getFunctions } from '$lib/apis/functions';
 	import { updateFolderById } from '$lib/apis/folders';
+	import { updateFileNameInHistory, updateFileNameInFilesArray } from '$lib/utils/history';
 
 	import Banner from '../common/Banner.svelte';
 	import MessageInput from '$lib/components/chat/MessageInput.svelte';
@@ -109,8 +111,11 @@
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
 	import { getBanners } from '$lib/apis/configs';
+	import ChatMinimap from './ChatMinimap.svelte';
+	import ChatMinimapMobile from './ChatMinimapMobile.svelte';
 
 	export let chatIdProp = '';
+	export let messageId = '';
 
 	let loading = true;
 
@@ -123,6 +128,7 @@
 	let autoScroll = true;
 	let processing = '';
 	let messagesContainerElement: HTMLDivElement;
+	let messagesComponent;
 
 	let navbarElement;
 
@@ -176,7 +182,12 @@
 	let files = [];
 	let params = {};
 
-	$: if (chatIdProp) {
+	let previousChatId = '';
+	let previousMessageId = '';
+
+	$: if (chatIdProp !== previousChatId || messageId !== previousMessageId) {
+		previousChatId = chatIdProp;
+		previousMessageId = messageId;
 		navigateHandler();
 	}
 
@@ -241,6 +252,81 @@
 
 			const chatInput = document.getElementById('chat-input');
 			chatInput?.focus();
+
+			if (messageId) {
+				const message = history.messages[messageId];
+
+				if (message) {
+					// Find the leaf of the branch containing the message
+					let leafId = messageId;
+					while (history.messages[leafId]?.childrenIds?.length > 0) {
+						leafId = history.messages[leafId].childrenIds.at(-1);
+					}
+
+					// Set the currentId to the leaf of the branch
+					history.currentId = leafId;
+					history = history; // Trigger reactivity
+					await tick(); // Wait for DOM update
+
+					// Check if the message element exists, if not, load more messages
+					let messageElement = document.getElementById(`message-${messageId}`);
+					
+					if (!messageElement && messagesComponent) {
+						// Calculate how many messages we need to load
+						// Find the index of the target message in the full path
+						const messagePath = [];
+						let currentId = leafId;
+						while (currentId !== null) {
+							messagePath.unshift(currentId);
+							const msg = history.messages[currentId];
+							currentId = msg?.parentId ?? null;
+						}
+						
+						const messageIndex = messagePath.indexOf(messageId);
+						if (messageIndex !== -1) {
+							const requiredCount = messagePath.length - messageIndex + 5;
+							await messagesComponent.loadMessagesToCount(requiredCount);
+							await tick();
+							messageElement = document.getElementById(`message-${messageId}`);
+						}
+					}
+
+					// Now, scroll to and highlight the original target message
+					setTimeout(() => {
+						if (messageElement && messagesContainerElement) {
+							const containerRect = messagesContainerElement.getBoundingClientRect();
+							const elementRect = messageElement.getBoundingClientRect();
+							const offset = 25; // A small offset from the top
+							const delta = elementRect.top - containerRect.top - offset;
+
+							messagesContainerElement.scrollTo({
+								top: messagesContainerElement.scrollTop + delta,
+								behavior: 'smooth'
+							});
+
+							// Add a subtle, pulsing highlight effect
+							messageElement.style.transition = 'all 0.3s ease-in-out';
+							messageElement.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'; // blue-500 with 10% opacity
+							messageElement.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.3)';
+							
+							// Pulse effect
+							setTimeout(() => {
+								messageElement.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+								messageElement.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.4)';
+							}, 300);
+							
+							// Fade out
+							setTimeout(() => {
+								messageElement.style.backgroundColor = '';
+								messageElement.style.boxShadow = '';
+								setTimeout(() => {
+									messageElement.style.transition = '';
+								}, 300);
+							}, 1500);
+						}
+					}, 100);
+				}
+			}
 		} else {
 			await goto('/');
 		}
@@ -264,6 +350,10 @@
 		saveSessionSelectedModels();
 	}
 
+	$: if (selectedToolIds && chatIdProp) {
+		saveSessionSelectedTools();
+	}
+
 	const saveSessionSelectedModels = () => {
 		const selectedModelsString = JSON.stringify(selectedModels);
 		if (
@@ -277,17 +367,28 @@
 		console.log('saveSessionSelectedModels', selectedModels, sessionStorage.selectedModels);
 	};
 
+	const saveSessionSelectedTools = () => {
+		const selectedToolsString = JSON.stringify(selectedToolIds);
+		if (sessionStorage.selectedToolIds === selectedToolsString) {
+			return;
+		}
+		sessionStorage.selectedToolIds = selectedToolsString;
+		console.log('saveSessionSelectedTools', selectedToolIds, sessionStorage.selectedToolIds);
+	};
+
 	let oldSelectedModelIds = [''];
 	$: if (!equal(selectedModelIds, oldSelectedModelIds)) {
 		onSelectedModelIdsChange();
 	}
 
-	const onSelectedModelIdsChange = () => {
-		resetInput();
+	const onSelectedModelIdsChange = async () => {
+		if (oldSelectedModelIds.filter((id) => id).length > 0) {
+			await resetInput();
+		}
 		oldSelectedModelIds = structuredClone(selectedModelIds);
 	};
 
-	const resetInput = () => {
+	const resetInput = async () => {
 		selectedToolIds = [];
 		selectedFilterIds = [];
 		pendingOAuthTools = [];
@@ -295,9 +396,7 @@
 		imageGenerationEnabled = false;
 		codeInterpreterEnabled = false;
 
-		if (selectedModelIds.filter((id) => id).length > 0) {
-			setDefaults();
-		}
+		await setDefaults();
 	};
 
 	const setDefaults = async () => {
@@ -1190,7 +1289,21 @@
 
 		autoScroll = true;
 
-		resetInput();
+		await resetInput();
+
+		if (selectedToolIds.length === 0 && sessionStorage.selectedToolIds) {
+			try {
+				const sessionTools = JSON.parse(sessionStorage.selectedToolIds);
+				if (Array.isArray(sessionTools)) {
+					selectedToolIds = sessionTools;
+				}
+			} catch (e) {
+				console.error('Failed to parse selectedToolIds from sessionStorage', e);
+			} finally {
+				sessionStorage.removeItem('selectedToolIds');
+			}
+		}
+
 		await chatId.set('');
 		await chatTitle.set('');
 
@@ -2157,22 +2270,24 @@
 			.filter((message) => message.files)
 			.flatMap((message) => message.files);
 
-		// Filter chatFiles to only include files that are in the chatMessageFiles
-		chatFiles = chatFiles.filter((item) => {
-			const fileExists = chatMessageFiles.some((messageFile) => messageFile.id === item.id);
-			return fileExists;
-		});
-
-		let files = structuredClone(chatFiles);
-		files.push(
-			...(userMessage?.files ?? []).filter(
-				(item) =>
-					['doc', 'text', 'note', 'chat', 'collection'].includes(item.type) ||
-					(item.type === 'file' && !(item?.content_type ?? '').startsWith('image/'))
-			)
+		// Build the list of files to send for context
+		// Paras customizations: Only send files attached to the CURRENT message.
+		// Sending all chatFiles or chatMessageFiles (history) causes redundant injections and context waste.
+		let files = [...(userMessage?.files ?? [])].filter(
+			(item) =>
+				['doc', 'text', 'note', 'chat', 'collection'].includes(item.type) ||
+				(item.type === 'file' && !(item?.content_type ?? '').startsWith('image/'))
 		);
-		// Remove duplicates
-		files = files.filter((item, index, array) => array.findIndex((i) => equal(i, item)) === index);
+
+		// DEDUPLICATION: Use a Map keyed by 'id' to ensure only the latest version of a file is sent.
+		// Priority is given to the first occurrence (chatFiles), then userMessage, then history.
+		const fileMap = new Map();
+		files.forEach((file) => {
+			if (file.id && !fileMap.has(file.id)) {
+				fileMap.set(file.id, file);
+			}
+		});
+		files = Array.from(fileMap.values());
 
 		scrollToBottom();
 		eventTarget.dispatchEvent(
@@ -2197,54 +2312,50 @@
 			$settings?.params?.stream_response ??
 			params?.stream_response ??
 			true;
-		// Always include system prompt — backend extracts it and prepends to DB messages.
-		// Only temp chats need conversation messages (persisted chats load from DB).
+		const apiReadyMessages = convertMessagesForAPI(_messages);
+
 		let messages = [
 			params?.system || $settings.system
-				? { role: 'system', content: `${params?.system ?? $settings?.system ?? ''}` }
-				: undefined
-		].filter(Boolean);
-		if ($temporaryChatEnabled) {
-			messages = [
-				...messages,
-				..._messages.map((message) => ({
-					...message,
-					content: processDetails(message.content),
-					...(message.output ? { output: message.output } : {})
-				}))
-			].filter((message) => message);
+				? {
+						role: 'system',
+						content: `${params?.system ?? $settings?.system ?? ''}`
+					}
+				: undefined,
+			...apiReadyMessages
+		].filter((message) => message);
 
-			messages = messages
-				.map((message, idx, arr) => {
-					const imageFiles = (message?.files ?? []).filter(
-						(file) => file.type === 'image' || (file?.content_type ?? '').startsWith('image/')
-					);
-
+		messages = messages
+			.map((message) => {
+				// If it's a user message with images, format for vision (Upstream logic)
+				if (message.role === 'user' && (message.files?.some((f) => f.type === 'image') ?? false)) {
 					return {
-						role: message.role,
-						...(message.output ? { output: message.output } : {}),
-						...(message.role === 'user' && imageFiles.length > 0
-							? {
-									content: [
-										{
-											type: 'text',
-											text: message?.merged?.content ?? message.content
-										},
-										...imageFiles.map((file) => ({
-											type: 'image_url',
-											image_url: {
-												url: file.url
-											}
-										}))
-									]
-								}
-							: {
-									content: message?.merged?.content ?? message.content
-								})
+						role: 'user',
+						content: [
+							{
+								type: 'text',
+								text: message?.merged?.content ?? message.content
+							},
+							...message.files
+								.filter((file) => file.type === 'image')
+								.map((file) => ({
+									type: 'image_url',
+									image_url: { url: file.url }
+								}))
+						]
 					};
-				})
-				.filter((message) => message?.role === 'user' || message?.content?.trim());
-		}
+				}
+				// Otherwise, return the message as is
+				return message;
+			})
+			.filter((message) => {
+				// Upstream robust filtering
+				if (message.role === 'system') return true;
+				if (message.role === 'user') return true;
+				if (message.role === 'assistant' && message.tool_calls) return true;
+				if (message.role === 'assistant' && message.content?.trim()) return true;
+				if (message.role === 'tool') return true;
+				return false;
+			});
 
 		const toolIds = [];
 		const toolServerIds = [];
@@ -2263,7 +2374,7 @@
 			}
 		}
 
-		// Parse skill mentions (<$skillId|label>) from user messages
+		// Parse skill mentions (<$skillId|label>) from user messages (Upstream)
 		const skillMentionRegex = /<\$([^|>]+)\|?[^>]*>/g;
 		const skillIds = [];
 		for (const message of messages) {
@@ -2276,7 +2387,7 @@
 			}
 		}
 
-		// Strip skill mentions from message content
+		// Strip skill mentions from message content (Upstream)
 		if (skillIds.length > 0) {
 			messages = messages.map((message) => {
 				if (typeof message.content === 'string') {
@@ -2298,18 +2409,37 @@
 			});
 		}
 
-		// Use the user-selected terminal from the dropdown
+		// Use the user-selected terminal from the dropdown (Upstream)
 		const activeTerminalId = $selectedTerminalId ?? null;
 
 		// Only send terminal_id if the model has terminal capability enabled
 		const terminalEnabled = model.info?.meta?.capabilities?.terminal ?? true;
+
+		// Final payload sanitization (Paras customizations)
+		const openAIMessages = messages.map((message) => {
+			const cleanMessage = {
+				role: message.role,
+				content: message.content
+			};
+
+			if (message.tool_calls) {
+				cleanMessage.tool_calls = message.tool_calls;
+			}
+			if (message.tool_call_id) {
+				cleanMessage.tool_call_id = message.tool_call_id;
+			}
+			if (message.name) {
+				cleanMessage.name = message.name;
+			}
+			return cleanMessage;
+		});
 
 		const res = await generateOpenAIChatCompletion(
 			localStorage.token,
 			{
 				stream: stream,
 				model: model.id,
-				...(messages.length > 0 ? { messages } : {}),
+				messages: openAIMessages,
 				params: {
 					...$settings?.params,
 					...params,
@@ -2349,7 +2479,7 @@
 				user_message: userMessage,
 
 				background_tasks: {
-					...(!$temporaryChatEnabled && !_chatId && (userMessage?.parentId ?? null) === null
+					...(!$temporaryChatEnabled && messages.length >= 1
 						? {
 								title_generation: $settings?.title?.auto ?? true,
 								tags_generation: $settings?.autoTags ?? true
@@ -2793,6 +2923,13 @@
 			toast.error($i18n.t('Failed to archive chat.'));
 		}
 	};
+
+	const createMessageSequence = async (messages) => {
+		const modelId = selectedModels[0];
+		const parentId = history.currentId;
+
+		await addMessages({ modelId, parentId, messages });
+	};
 </script>
 
 <svelte:head>
@@ -2877,6 +3014,7 @@
 						{initNewChat}
 						{archiveChatHandler}
 						{moveChatHandler}
+						{createMessageSequence}
 						onSaveTempChat={async () => {
 							try {
 								if (!history?.currentId || !Object.keys(history.messages).length) {
@@ -2916,7 +3054,7 @@
 						}}
 					/>
 
-					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
+					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto relative">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
@@ -2930,6 +3068,7 @@
 							>
 								<div class=" h-full w-full flex flex-col">
 									<Messages
+										bind:this={messagesComponent}
 										chatId={$chatId}
 										bind:history
 										bind:autoScroll
@@ -2950,9 +3089,35 @@
 										topPadding={true}
 										bottomPadding={files.length > 0}
 										{onSelect}
+										on:save={(e) => {
+											const updatedFile = e.detail;
+											if (updatedFile) {
+												const fileId = updatedFile.id;
+												const newFilename = updatedFile.file?.filename ?? updatedFile.name;
+												const newContent = updatedFile.file?.data?.content ?? updatedFile.data?.content;
+
+												// Sync history and local state
+												history.messages = updateFileNameInHistory(
+													history,
+													fileId,
+													newFilename,
+													newContent
+												);
+												files = updateFileNameInFilesArray(files, fileId, newFilename, newContent);
+												chatFiles = updateFileNameInFilesArray(chatFiles, fileId, newFilename, newContent);
+											}
+											if (!$temporaryChatEnabled) {
+												saveChatHandler($chatId, history);
+											}
+										}}
 									/>
 								</div>
 							</div>
+							
+							<!-- Chat Minimap (desktop) -->
+							<ChatMinimap {history} {messagesContainerElement} {messagesComponent} />
+							<!-- Chat Minimap (mobile) -->
+							<ChatMinimapMobile {history} {messagesContainerElement} {messagesComponent} />
 
 							<div class=" pb-2 {dragged ? 'z-0' : 'z-10'}">
 								<MessageInput
@@ -3017,6 +3182,31 @@
 									onChange={(data) => {
 										if (!$temporaryChatEnabled) {
 											saveDraft(data, $chatId);
+										}
+									}}
+									on:save={(e) => {
+										const updatedFile = e.detail;
+										if (updatedFile) {
+											const fileId = updatedFile.id;
+											const newFilename = updatedFile.file?.filename ?? updatedFile.name;
+											const newContent = updatedFile.file?.data?.content ?? updatedFile.data?.content;
+
+											// 1. Sync the current message input attachments
+											files = updateFileNameInFilesArray(files, fileId, newFilename, newContent);
+
+											// 2. Sync the chat-wide files list
+											chatFiles = updateFileNameInFilesArray(chatFiles, fileId, newFilename, newContent);
+
+											// 3. Sync all instances in the message history
+											history.messages = updateFileNameInHistory(
+												history,
+												fileId,
+												newFilename,
+												newContent
+											);
+										}
+										if (!$temporaryChatEnabled) {
+											saveChatHandler($chatId, history);
 										}
 									}}
 									on:submit={async (e) => {

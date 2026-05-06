@@ -58,6 +58,7 @@
 	import { getChatById } from '$lib/apis/chats';
 	import { getSessionUser } from '$lib/apis/auths';
 	import { getTools } from '$lib/apis/tools';
+	import { uploadImageToCloudinary } from '$lib/apis';
 
 	import { WEBUI_BASE_URL, WEBUI_API_BASE_URL, PASTED_TEXT_CHARACTER_LIMIT } from '$lib/constants';
 	import { getOAuthClientAuthorizationUrl } from '$lib/apis/configs';
@@ -97,6 +98,7 @@
 	import Note from '../icons/Note.svelte';
 	import { goto } from '$app/navigation';
 	import InputModal from '../common/InputModal.svelte';
+	import { updateFileNameInHistory, updateFileNameInFilesArray } from '$lib/utils/history';
 	import Expand from '../icons/Expand.svelte';
 	import QueuedMessageItem from './MessageInput/QueuedMessageItem.svelte';
 	import TaskList from './Messages/ResponseMessage/TaskList.svelte';
@@ -632,6 +634,10 @@
 					};
 				}
 
+				if (itemData?.context) {
+					metadata = { ...metadata, context: itemData.context };
+				}
+
 				// During the file upload, file content is automatically extracted.
 				const uploadedFile = await uploadFile(localStorage.token, file, metadata, process);
 
@@ -738,7 +744,6 @@
 					toast.error($i18n.t('Selected model(s) do not support image inputs'));
 					return;
 				}
-
 				const compressImageHandler = async (imageUrl, settings = {}, config = {}) => {
 					// Quick shortcut so we don’t do unnecessary work.
 					const settingsCompression = settings?.imageCompression ?? false;
@@ -783,19 +788,30 @@
 					// Compress the image if settings or config require it
 					imageUrl = await compressImageHandler(imageUrl, $settings, $config);
 
-					if ($temporaryChatEnabled) {
-						files = [
-							...files,
-							{
-								type: 'image',
-								url: imageUrl
-							}
-						];
-					} else {
-						const blob = await (await fetch(imageUrl)).blob();
-						const compressedFile = new File([blob], file.name, { type: file.type });
+					try {
+						let imageToUpload;
+						if (imageUrl.startsWith('data:')) {
+							const blob = await (await fetch(imageUrl)).blob();
+							imageToUpload = new File([blob], file.name, { type: file.type });
+						} else {
+							imageToUpload = file;
+						}
 
-						uploadFileHandler(compressedFile, false);
+						// Upload to Cloudinary (Paras customizations)
+						const uploadedImage = await uploadImageToCloudinary(localStorage.token, imageToUpload);
+
+						if (uploadedImage) {
+							files = [
+								...files,
+								{
+									type: 'image',
+									url: uploadedImage.url
+								}
+							];
+						}
+					} catch (error) {
+						console.error(error);
+						toast.error($i18n.t('Failed to upload image'));
 					}
 				};
 
@@ -1401,6 +1417,25 @@
 													files.splice(fileIdx, 1);
 													files = files;
 												}}
+												on:save={(e) => {
+													const updatedFile = e.detail;
+													const fileId = updatedFile.id;
+													const newFilename = updatedFile.file.filename;
+
+													// Update local files state (Bug 2)
+													files = updateFileNameInFilesArray(files, fileId, newFilename);
+
+													// Update all instances of this file in the entire history (Bug 1)
+													if (history && history.messages) {
+														history.messages = updateFileNameInHistory(
+															history,
+															fileId,
+															newFilename,
+															updatedFile.file.data?.content
+														);
+														dispatch('save', updatedFile);
+													}
+												}}
 												on:click={() => {
 													console.log(file);
 												}}
@@ -1504,6 +1539,11 @@
 															stopResponse();
 														}
 
+														// Ctrl/Cmd + E to start voice recording
+														if (isCtrlPressed && e.key.toLowerCase() === 'e') {
+															e.preventDefault();
+															document.getElementById('voice-input-button')?.click();
+														}
 														if (prompt === '' && e.key == 'ArrowUp') {
 															e.preventDefault();
 
@@ -1540,7 +1580,9 @@
 																// either when Enter is pressed or when Ctrl+Enter is pressed.
 																const enterPressed =
 																	($settings?.ctrlEnterToSend ?? false)
-																		? (e.key === 'Enter' || e.keyCode === 13) && isCtrlPressed
+																		? (e.key === 'Enter' || e.keyCode === 13) &&
+																			isCtrlPressed &&
+																			!e.shiftKey
 																		: (e.key === 'Enter' || e.keyCode === 13) && !e.shiftKey;
 
 																if (enterPressed) {
@@ -1571,7 +1613,36 @@
 
 														if (clipboardData && clipboardData.items) {
 															for (const item of clipboardData.items) {
-																if (item.type === 'text/plain') {
+																if (item.type.indexOf('image') !== -1) {
+																	const blob = item.getAsFile();
+																	try {
+																		// Upload to Cloudinary (Paras customizations)
+																		const uploadedImage = await uploadImageToCloudinary(
+																			localStorage.token,
+																			blob
+																		);
+
+																		if (uploadedImage) {
+																			files = [
+																				...files,
+																				{
+																					type: 'image',
+																					url: uploadedImage.url
+																				}
+																			];
+																		}
+																	} catch (error) {
+																		console.error(error);
+																		toast.error($i18n.t('Failed to upload image'));
+																	}
+																} else if (item?.kind === 'file') {
+																	const file = item.getAsFile();
+																	if (file) {
+																		const _files = [file];
+																		await inputFilesHandler(_files);
+																		e.preventDefault();
+																	}
+																} else if (item.type === 'text/plain') {
 																	if (($settings?.largeTextAsFile ?? false) && !shiftKey) {
 																		const text = clipboardData.getData('text/plain');
 

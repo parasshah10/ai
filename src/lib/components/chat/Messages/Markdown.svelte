@@ -1,6 +1,10 @@
 <script>
-	import { onDestroy } from 'svelte';
-	import { marked } from 'marked';
+	// Diagnostic, dual-parser Markdown renderer with extensive logging
+	// - Uses unified/remark (LibreChat stack) for large content (threshold-controlled)
+	// - Falls back to marked (existing pipeline) and compares bare vs with-extensions where possible
+
+	import { onDestroy, onMount, tick } from 'svelte';
+	import { marked, Marked } from 'marked';
 	import { replaceTokens, processResponseContent } from '$lib/utils';
 	import { user } from '$lib/stores';
 
@@ -9,12 +13,14 @@
 	import { disableSingleTilde } from '$lib/utils/marked/strikethrough-extension';
 	import { mentionExtension } from '$lib/utils/marked/mention-extension';
 	import colonFenceExtension from '$lib/utils/marked/colon-fence-extension';
+	import { parseMarkdownToTokens } from '$lib/utils/markdown/unified-parser';
 
 	import MarkdownTokens from './Markdown/MarkdownTokens.svelte';
 	import footnoteExtension from '$lib/utils/marked/footnote-extension';
 	import citationExtension from '$lib/utils/marked/citation-extension';
 
 	export let id = '';
+	export let role = 'assistant'; // Default to assistant
 	export let content;
 	export let done = true;
 	export let model = null;
@@ -36,15 +42,15 @@
 	export let onTaskClick = () => {};
 
 	let tokens = [];
-	let pendingUpdate = null;
-	let lastContent = '';
-	let lastParsedContent = '';
+	let rendering = false;
+	let pendingContent = '';
 
 	const options = {
 		throwOnError: false,
 		breaks: true
 	};
 
+	// Configure production marked instance with extensions (current behavior)
 	marked.use(markedKatexExtension(options));
 	marked.use(markedExtension(options));
 	marked.use(citationExtension(options));
@@ -59,32 +65,71 @@
 		]
 	});
 
-	const parseTokens = () => {
-		if (content === lastContent) return;
-		lastContent = content;
+const USE_UNIFIED_PARSER = true;
 
-		const processed = replaceTokens(processResponseContent(content), model?.name, $user?.name);
-		if (processed === lastParsedContent) return;
-		lastParsedContent = processed;
+const renderMarkdown = () => {
+	if (rendering) return;
+	rendering = true;
 
-		tokens = marked.lexer(processed);
-	};
-
-	const updateHandler = (content) => {
-		if (content && !pendingUpdate) {
-			pendingUpdate = requestAnimationFrame(() => {
-				pendingUpdate = null;
-				parseTokens();
-			});
+	requestAnimationFrame(() => {
+		const contentToRender = pendingContent;
+		if (contentToRender === null || typeof contentToRender === 'undefined') {
+			rendering = false;
+			return;
 		}
-	};
 
-	$: updateHandler(content);
+		const msg = String(contentToRender ?? '');
+		const processedContent = processResponseContent(msg);
+		const contentWithReplacedTokens = replaceTokens(
+			processedContent,
+			sourceIds,
+			model?.name,
+			$user?.name
+		);
 
-	// Throttle parsing to once per animation frame while streaming
-	onDestroy(() => {
-		cancelAnimationFrame(pendingUpdate);
+		if (role === 'user') {
+			tokens = [
+				{
+					type: 'paragraph',
+					raw: contentWithReplacedTokens,
+					text: contentWithReplacedTokens,
+					tokens: [{ type: 'text', raw: contentWithReplacedTokens, text: contentWithReplacedTokens }]
+				}
+			];
+		} else {
+			tokens = marked.lexer(contentWithReplacedTokens);
+		}
+
+		rendering = false;
+
+		if (pendingContent !== contentToRender) {
+			renderMarkdown();
+		}
 	});
+};
+
+$: {
+	if (content !== pendingContent) {
+		pendingContent = content;
+		if (!done) {
+			// Fast path for streaming: render as plain text
+			tokens = [
+				{
+					type: 'paragraph',
+					raw: content,
+					text: content,
+					tokens: [{ type: 'text', raw: content, text: content }]
+				}
+			];
+		} else {
+			renderMarkdown();
+		}
+	}
+}
+
+$: if (done) {
+	renderMarkdown();
+}
 </script>
 
 {#key id}
